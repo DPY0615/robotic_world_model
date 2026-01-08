@@ -36,8 +36,9 @@ class AnymalDFlatPPOPretrainRunnerCfg(AnymalDFlatPPORunnerCfg):
     )
     imagination = RslRlMbrlImaginationCfg(
         num_envs=0,
-        num_steps=0,
-        command_resample_interval=-1,
+        num_steps_per_env=0,
+        max_episode_length=0,
+        command_resample_interval_range=None,
         uncertainty_penalty_weight=-0.0,
         state_normalizer=RslRlNormalizerCfg(
             mean=[
@@ -92,12 +93,12 @@ class AnymalDFlatPPOPretrainRunnerCfg(AnymalDFlatPPORunnerCfg):
     system_dynamics_warmup_iterations = 0
     system_dynamics_num_visualizations = 4
     system_dynamics_state_idx_dict = {
-        "$v$\n$[m/s]$": [0, 1, 2],
-        "$\omega$\n$[rad/s]$": [3, 4, 5],
-        "$g$\n$[1]$": [6, 7, 8],
-        "$q$\n$[rad]$": [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
-        "$\dot{q}$\n$[rad/s]$": [21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32],
-        "$\\tau$\n$[Nm]$": [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44],
+        r"$v$\n$[m/s]$": [0, 1, 2],
+        r"$\omega$\n$[rad/s]$": [3, 4, 5],
+        r"$g$\n$[1]$": [6, 7, 8],
+        r"$q$\n$[rad]$": [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+        r"$\dot{q}$\n$[rad/s]$": [21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32],
+        r"$\tau$\n$[Nm]$": [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44],
     }
     pca_obs_buf_size = 10000
 
@@ -118,9 +119,10 @@ class AnymalDFlatPPOFinetuneRunnerCfg(AnymalDFlatPPOPretrainRunnerCfg):
         # post init of parent
         super().__post_init__()
         # override imagination
-        self.imagination.num_envs = 4095
-        self.imagination.num_steps = 96
-        self.imagination.command_resample_interval = 96
+        self.imagination.num_envs = 8192
+        self.imagination.num_steps_per_env = 24
+        self.imagination.max_episode_length = 256
+        self.imagination.command_resample_interval_range = [100, 120]
         self.imagination.uncertainty_penalty_weight = -0.0
 
 

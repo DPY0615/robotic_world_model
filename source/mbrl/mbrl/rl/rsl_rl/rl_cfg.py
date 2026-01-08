@@ -46,11 +46,14 @@ class RslRlMbrlImaginationCfg:
     num_envs: int = MISSING
     """The number of environments for the imagination."""
     
-    num_steps: int = MISSING
+    num_steps_per_env: int = MISSING
     """The number of steps for the imagination."""
     
-    command_resample_interval: int = MISSING
-    """The resample interval for the command."""
+    max_episode_length: int = MISSING
+    """The maximum episode length for the imagination."""
+
+    command_resample_interval_range: list[float] | None = MISSING
+    """The resample interval range for the command."""
     
     uncertainty_penalty_weight: float = MISSING
     """The weight for the uncertainty penalty."""

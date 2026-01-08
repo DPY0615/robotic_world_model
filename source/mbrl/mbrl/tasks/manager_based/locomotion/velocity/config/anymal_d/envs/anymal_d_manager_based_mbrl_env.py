@@ -21,11 +21,18 @@ class ANYmalDManagerBasedMBRLEnv(ManagerBasedMBRLEnv):
         self.base_velocity = None
 
 
-    def _prepare_additional_imagination_attributes(self):
+    def _init_additional_imagination_attributes(self):
         self.last_air_time = torch.zeros(self.num_imagination_envs, 4, device=self.device)
         self.current_air_time = torch.zeros(self.num_imagination_envs, 4, device=self.device)
         self.last_contact_time = torch.zeros(self.num_imagination_envs, 4, device=self.device)
         self.current_contact_time = torch.zeros(self.num_imagination_envs, 4, device=self.device)
+
+
+    def _reset_additional_imagination_attributes(self, env_ids):
+        self.last_air_time[env_ids] = 0.0
+        self.current_air_time[env_ids] = 0.0
+        self.last_contact_time[env_ids] = 0.0
+        self.current_contact_time[env_ids] = 0.0
 
     
     def get_imagination_observation(self, state_history, action_history, observation_noise=True):
@@ -86,7 +93,7 @@ class ANYmalDManagerBasedMBRLEnv(ManagerBasedMBRLEnv):
     
     
     def _parse_terminations(self, terminations):
-        parsed_terminations = torch.sigmoid(terminations).squeeze(-1).round().int() if terminations is not None else None
+        parsed_terminations = torch.sigmoid(terminations).squeeze(-1).round().bool() if terminations is not None else None
         return parsed_terminations
 
 
