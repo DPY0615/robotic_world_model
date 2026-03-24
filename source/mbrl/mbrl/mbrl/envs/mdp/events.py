@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
 
-def reset_root_state_uniform_visualize(
+def reset_root_state_uniform_visualize( # 给机器人 root state 做随机 reset，但只先对 真实 env 随机采样，再把结果复制给对应的 imagination env。
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
     pose_range: dict[str, tuple[float, float]],
@@ -65,7 +65,7 @@ def reset_root_state_uniform_visualize(
     asset.write_root_velocity_to_sim(velocities, env_ids=env_ids)
 
 
-def reset_root_state_to_specified(
+def reset_root_state_to_specified( # 给机器人 root state 做指定 reset，但只先对 真实 env 设置，再把结果复制给对应的 imagination env。
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
     positions: torch.Tensor,
@@ -81,7 +81,7 @@ def reset_root_state_to_specified(
     asset.write_root_velocity_to_sim(velocities, env_ids=env_ids)
 
 
-def reset_root_velocity_to_specified(
+def reset_root_velocity_to_specified( # 给机器人 root velocity 做指定 reset，但只先对 真实 env 设置，再把结果复制给对应的 imagination env。
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
     velocities: torch.Tensor,
@@ -94,7 +94,7 @@ def reset_root_velocity_to_specified(
     asset.write_root_velocity_to_sim(velocities, env_ids=env_ids)
 
 
-def reset_joints_by_scale_visualize(
+def reset_joints_by_scale_visualize( # 对关节位置和速度基于默认值做“按比例缩放”的随机 reset，并把结果复制给 real/imagination 成对 env
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
     position_range: tuple[float, float],
@@ -129,7 +129,7 @@ def reset_joints_by_scale_visualize(
     asset.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)
 
 
-def reset_joints_to_specified(
+def reset_joints_to_specified( # 直接把指定 joint pos / joint vel 写进 env
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
     joint_pos: torch.Tensor,

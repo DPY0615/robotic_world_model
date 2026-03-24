@@ -4,16 +4,16 @@ from typing import List, Dict
 
 
 @dataclass
-class AnymalDFlatConfig(BaseConfig):
+class AnymalDFlatConfig(BaseConfig): # Anymal D平地配置类，实例化父类所有占位默认值
     experiment_name: str = "offline"
     
     @dataclass
     class ExperimentConfig(BaseConfig.ExperimentConfig):
-        environment: str = "anymal_d_flat"
+        environment: str = "anymal_d_flat" # 与环境解析函数(train.py resolve_environment_cls)中的字符串对应，决定使用哪个环境类
     
     @dataclass
     class EnvironmentConfig(BaseConfig.EnvironmentConfig):
-        reward_term_weights: Dict[str, float] = field(default_factory=lambda: {
+        reward_term_weights: Dict[str, float] = field(default_factory=lambda: { # 奖励项权重字典，键与AnymalDFlatEnv._compute_imagination_reward_terms一一对应
             "track_lin_vel_xy_exp": 1.0,
             "track_ang_vel_z_exp": 0.5,
             "lin_vel_z_l2": -2.0,
@@ -28,15 +28,15 @@ class AnymalDFlatConfig(BaseConfig):
             "dof_pos_limits": 0.0,
         })
         uncertainty_penalty_weight: float = -1.0
-        command_resample_interval_range: List[int] | None = field(default_factory=lambda: [100, 120])
+        command_resample_interval_range: List[int] | None = field(default_factory=lambda: [100, 120]) # 命令重采样间隔范围，单位为环境步数，若不为None则在该范围内随机采样一个整数作为每次命令重采样的间隔步数
         event_interval_range: List[int] = field(default_factory=lambda: [48, 96])
     
     @dataclass
     class DataConfig(BaseConfig.DataConfig):
-        dataset_root: str = "assets"
+        dataset_root: str = "assets" # 数据集根目录，最终数据路径为dataset_root/dataset_folder
         dataset_folder: str = "data"
         batch_data_size: int = 10000
-        state_idx_dict: Dict[str, List[int]] = field(default_factory=lambda: {
+        state_idx_dict: Dict[str, List[int]] = field(default_factory=lambda: { # 定义状态数据中各个物理量对应的索引范围，键为物理量名称，值为该物理量在状态数据中的索引列表 
             r"$v$\n$[m/s]$": [0, 1, 2],
             r"$\omega$\n$[rad/s]$": [3, 4, 5],
             r"$g$\n$[1]$": [6, 7, 8],
@@ -44,7 +44,7 @@ class AnymalDFlatConfig(BaseConfig):
             r"$\dot{q}$\n$[rad/s]$": [21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32],
             r"$\tau$\n$[Nm]$": [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44],
         })
-        state_data_mean: List[float] = field(default_factory=lambda: [
+        state_data_mean: List[float] = field(default_factory=lambda: [ # 状态数据均值列表，顺序与state_idx_dict中物理量的索引顺序一致，用于状态数据归一化
             0.0, 0.0, 0.0,
             0.0, 0.0, 0.0,
             0.0, 0.0, -1.0,
@@ -52,7 +52,7 @@ class AnymalDFlatConfig(BaseConfig):
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
             -2.0, -2.0, 2.0, 2.0, -6.0, 8.0, -6.0, 8.0, 12.0, -12.0, 12.0, -12.0,
         ])
-        state_data_std: List[float] = field(default_factory=lambda: [
+        state_data_std: List[float] = field(default_factory=lambda: [ # 状态数据标准差列表，顺序与state_idx_dict中物理量的索引顺序一致，用于状态数据归一化
             0.5, 0.5, 0.1,
             0.3, 0.3, 0.5,
             0.02, 0.02, 0.04,

@@ -18,7 +18,7 @@ from mbrl.rl.rsl_rl import (
 class AnymalDFlatPPOPretrainRunnerCfg(AnymalDFlatPPORunnerCfg):
     class_name: str = "MBPOOnPolicyRunner"
 
-    system_dynamics = RslRlSystemDynamicsCfg(
+    system_dynamics = RslRlSystemDynamicsCfg( # 系统动力学网络(世界模型)结构配置
         ensemble_size=1,
         history_horizon=32,
         architecture_config = {
@@ -34,10 +34,10 @@ class AnymalDFlatPPOPretrainRunnerCfg(AnymalDFlatPPORunnerCfg):
         },
         freeze_auxiliary=False,
     )
-    imagination = RslRlMbrlImaginationCfg(
-        num_envs=0,
+    imagination = RslRlMbrlImaginationCfg( # imagination rollout 配置 (世界模型训练阶段不开rollout)
+        num_envs=0,   
         num_steps_per_env=0,
-        max_episode_length=0,
+        max_episode_length=0,  
         command_resample_interval_range=None,
         uncertainty_penalty_weight=-0.0,
         state_normalizer=RslRlNormalizerCfg(
@@ -63,7 +63,7 @@ class AnymalDFlatPPOPretrainRunnerCfg(AnymalDFlatPPORunnerCfg):
             std=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
         )
     )
-    algorithm = RslRlMbrlPpoAlgorithmCfg(
+    algorithm = RslRlMbrlPpoAlgorithmCfg( # PPO算法配置
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
@@ -77,7 +77,7 @@ class AnymalDFlatPPOPretrainRunnerCfg(AnymalDFlatPPORunnerCfg):
         gamma=0.99,
         lam=0.95,
         desired_kl=0.01,
-        max_grad_norm=1.0,
+        max_grad_norm=1.0,  # PPO参数
         system_dynamics_forecast_horizon=8,
         system_dynamics_loss_weights={"state": 1.0, "sequence": 1.0, "bound": 1.0, "kl": 0.1, "extension": 1.0, "contact": 1.0, "termination": 1.0},
         system_dynamics_num_mini_batches=20,
@@ -85,7 +85,7 @@ class AnymalDFlatPPOPretrainRunnerCfg(AnymalDFlatPPORunnerCfg):
         system_dynamics_replay_buffer_size=1000,
         system_dynamics_num_eval_trajectories=100,
         system_dynamics_len_eval_trajectory=400,
-        system_dynamics_eval_traj_noise_scale=[0.1, 0.2, 0.4, 0.5, 0.8],
+        system_dynamics_eval_traj_noise_scale=[0.1, 0.2, 0.4, 0.5, 0.8], # 世界模型参数
     )
     run_name = "pretrain"
     load_system_dynamics = False
@@ -108,18 +108,18 @@ class AnymalDFlatPPOPretrainRunnerCfg(AnymalDFlatPPORunnerCfg):
         self.max_iterations = 2000
 
 @configclass
-class AnymalDFlatPPOFinetuneRunnerCfg(AnymalDFlatPPOPretrainRunnerCfg):
+class AnymalDFlatPPOFinetuneRunnerCfg(AnymalDFlatPPOPretrainRunnerCfg): # 微调配置
     resume = True
-    load_run = "2025-11-04_09-59-00"
+    load_run = "2026-03-05_16-41-06"
     load_system_dynamics = True
-    system_dynamics_load_path = "logs/rsl_rl/anymal_d_flat/2025-11-04_14-31-20_pretrain_rnn/model_5000.pt"
+    system_dynamics_load_path = "logs/rsl_rl/anymal_d_flat/2026-03-05_16-41-06_pretrain/model_2000.pt"
     system_dynamics_warmup_iterations = 500
     run_name = "finetune"
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
         # override imagination
-        self.imagination.num_envs = 8192
+        self.imagination.num_envs = 8192  # 打开 imagination rollout
         self.imagination.num_steps_per_env = 24
         self.imagination.max_episode_length = 256
         self.imagination.command_resample_interval_range = [100, 120]

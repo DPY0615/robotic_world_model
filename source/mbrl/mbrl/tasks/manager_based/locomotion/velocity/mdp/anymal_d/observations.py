@@ -27,7 +27,7 @@ from isaaclab.envs.utils.io_descriptors import (
 @generic_io_descriptor(
     observation_type="RootState", on_inspect=[record_shape, record_dtype]
 )
-def over_orientation(env: ManagerBasedEnv, limit_angle: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def over_orientation(env: ManagerBasedEnv, limit_angle: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor: # 判断姿态是否过大，作为终止条件使用
     """Bad orientation.
     
     Note: This function is typically used as a termination condition.
@@ -42,11 +42,11 @@ def over_orientation(env: ManagerBasedEnv, limit_angle: float, asset_cfg: SceneE
     """
     # extract the used quantities (to enable type-hinting)
     asset: RigidObject = env.scene[asset_cfg.name]
-    return torch.acos(-asset.data.projected_gravity_b[:, 2]).abs().unsqueeze(-1) > limit_angle
+    return torch.acos(-asset.data.projected_gravity_b[:, 2]).abs().unsqueeze(-1) > limit_angle # 如果当前机器人Z轴夹角与重力方向的夹角过大，则认为姿态过大，返回True，否则返回False
 
 
 @generic_io_descriptor(observation_type="BodyState", on_inspect=[record_shape, record_dtype, record_body_names])
-def body_height_w(
+def body_height_w( # 返回指定body在世界坐标系下的高度
     env: ManagerBasedEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
@@ -67,7 +67,7 @@ def body_height_w(
 
 
 @generic_io_descriptor(observation_type="BodyState", on_inspect=[record_shape, record_dtype, record_body_names])
-def body_lin_vel_w_norm(
+def body_lin_vel_w_norm( # 返回指定body在世界坐标系下的水平线速度的模长
     env: ManagerBasedEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:

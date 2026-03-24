@@ -11,28 +11,36 @@ import torch
 from isaaclab.envs.common import VecEnvStepReturn
 from .manager_based_mbrl_env import ManagerBasedMBRLEnv, ManagerBasedRLEnvCfg
 
-
+"""将真实仿真rollout和基于系统动力学模型的imagination rollout结合在一个环境中,并提供相应的接口进行交互和管理。"""
 class ManagerBasedVisualizeEnv(ManagerBasedMBRLEnv):
     
     
     def __init__(self, cfg: ManagerBasedRLEnvCfg, render_mode: str | None = None, **kwargs):
+        """
+        Initialize the ManagerBasedVisualizeEnv.
+
+        Args:
+            cfg: The configuration object.
+            render_mode: The rendering mode.
+            **kwargs: Additional keyword arguments.
+        """
         super().__init__(cfg, render_mode, **kwargs)
-        self.env_ids_real = torch.arange(0, self.num_envs, 2, device=self.device)
+        self.env_ids_real = torch.arange(0, self.num_envs, 2, device=self.device) # 偶数索引的环境ID表示真实仿真环境，奇数索引的环境ID表示基于系统动力学模型的imagination环境。
         self.env_ids_imagination = torch.arange(1, self.num_envs, 2, device=self.device)
 
         
-    def init_imagination_history(self, history_horizon):
+    def init_imagination_history(self, history_horizon): # 初始化imagination rollout的状态和动作历史记录，历史记录的长度由history_horizon参数指定。
         self.imagination_state_history = torch.zeros(self.num_envs // 2, history_horizon, self.observation_manager.group_obs_dim["system_state"][0], device=self.device)
         self.imagination_action_history = torch.zeros(self.num_envs // 2, history_horizon, self.observation_manager.group_obs_dim["system_action"][0], device=self.device)
         
     
-    def _sync_imagination_history(self, env_ids_real):
+    def _sync_imagination_history(self, env_ids_real): # 同步imagination rollout的状态历史记录，将重置的真实仿真环境的当前状态复制到对应的imagination环境中，以确保imagination rollout从正确的初始状态开始。
         self.imagination_state_history[env_ids_real // 2] = 0.0
         self.imagination_action_history[env_ids_real // 2] = 0.0
         self.imagination_state_history[env_ids_real // 2, -1] = self.imagination_state_normalizer(self.observation_manager.compute()["system_state"])[env_ids_real]
 
 
-    def step(self, action: torch.Tensor) -> VecEnvStepReturn:
+    def step(self, action: torch.Tensor) -> VecEnvStepReturn: # 执行环境动力学的一次时间步，并重置已终止的环境。
         """Execute one time-step of the environment's dynamics and reset terminated environments.
 
         Unlike the :class:`ManagerBasedEnv.step` class, the function performs the following operations:
@@ -66,7 +74,7 @@ class ManagerBasedVisualizeEnv(ManagerBasedMBRLEnv):
             # set actions into simulator
             self.scene.write_data_to_sim()
             # write imagination states
-            if i == self.cfg.decimation - 1:
+            if i == self.cfg.decimation - 1: # 在最后一个物理步时更新imagination环境，把world model的预测状态直改到simulator中
                 self._update_imagination_envs(action)
             # simulate
             self.sim.step(render=False)
@@ -82,7 +90,7 @@ class ManagerBasedVisualizeEnv(ManagerBasedMBRLEnv):
         # -- update env counters (used for curriculum generation)
         self.episode_length_buf += 1  # step in current episode (per env)
         self.common_step_counter += 1  # total step (common for all envs)
-        # -- check terminations
+        # -- check terminati
         self.reset_buf = self.termination_manager.compute()
         self.reset_terminated = self.termination_manager.terminated
         self.reset_time_outs = self.termination_manager.time_outs
@@ -92,10 +100,10 @@ class ManagerBasedVisualizeEnv(ManagerBasedMBRLEnv):
         # -- reset envs that terminated/timed-out and log the episode information
         reset_env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(reset_env_ids) > 0:
-            uniques, counts = torch.cat([reset_env_ids, self.env_ids_real]).unique(return_counts=True)
-            env_ids_real = uniques[counts > 1]
-            env_ids_imagination = env_ids_real + 1
-            env_ids = torch.vstack([env_ids_real, env_ids_imagination]).T.flatten()
+            uniques, counts = torch.cat([reset_env_ids, self.env_ids_real]).unique(return_counts=True) # 拼接两组编号，统计每个编号出现的次数
+            env_ids_real = uniques[counts > 1] # 出现两次以上的编号即为需要重置的真实仿真环境编号
+            env_ids_imagination = env_ids_real + 1 # 对应的imagination环境编号为真实仿真环境编号加1
+            env_ids = torch.vstack([env_ids_real, env_ids_imagination]).T.flatten() # 将需要重置的真实仿真环境编号和对应的imagination环境编号交错排列成一个新的编号列表
             if len(env_ids) > 0:
                 self._reset_idx(env_ids)
             # if sensors are added to the scene, make sure we render to reflect changes in reset
@@ -110,24 +118,24 @@ class ManagerBasedVisualizeEnv(ManagerBasedMBRLEnv):
         # -- compute observations
         # note: done after reset to get the correct observations for reset envs
         self.obs_buf = self.observation_manager.compute()
-        if len(reset_env_ids) > 0 and len(env_ids_real) > 0:
+        if len(reset_env_ids) > 0 and len(env_ids_real) > 0: # 如果有环境需要重置且有对应的真实仿真环境编号，则同步imagination rollout的状态历史记录，以确保imagination rollout从正确的初始状态开始。
             self._sync_imagination_history(env_ids_real)
 
         # return observations, rewards, resets and extras
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
 
 
-    def _update_imagination_envs(self, action):
+    def _update_imagination_envs(self, action): # 更新imagination rollout的状态历史记录，首先从输入的动作中提取出对应imagination环境的动作，然后将这些动作归一化后添加到imagination动作历史记录中。接着，根据系统动力学模型预测imagination环境的下一个状态，并将预测状态反归一化后解析成具体的状态变量。最后，将解析后的状态变量重置到imagination环境中，并将预测状态添加到imagination状态历史记录中。
         self.num_imagination_envs = len(self.env_ids_imagination)
         rollout_action = action[self.env_ids_imagination]
-        self.imagination_action_history = torch.cat([self.imagination_action_history[:, 1:].clone(), self.imagination_action_normalizer(rollout_action).unsqueeze(1)], dim=1)
-        if self.system_dynamics.architecture_config["type"] in ["rnn", "rssm"]:
+        self.imagination_action_history = torch.cat([self.imagination_action_history[:, 1:].clone(), self.imagination_action_normalizer(rollout_action).unsqueeze(1)], dim=1) # 将新的动作添加到imagination动作历史记录中，保持历史记录的长度不变，丢弃最旧的动作。
+        if self.system_dynamics.architecture_config["type"] in ["rnn", "rssm"]: # 如果系统动力学模型的架构类型是RNN或RSSM，则将imagination状态历史记录中的最后一个状态作为输入，保持历史记录的长度不变，丢弃最旧的状态。
             self.imagination_state_history = self.imagination_state_history[:, -1].unsqueeze(1)
             self.imagination_action_history = self.imagination_action_history[:, -1].unsqueeze(1)
         imagination_states, *_ = self.system_dynamics.forward(self.imagination_state_history, self.imagination_action_history)
         imagination_states_denormalized = self.imagination_state_normalizer.inverse(imagination_states)
         parsed_imagination_states = self._parse_imagination_states(imagination_states_denormalized)
-        self._reset_imagination_sim(parsed_imagination_states)
+        self._reset_imagination_sim(parsed_imagination_states) # 将解析后的状态变量重置到imagination环境中
         self.imagination_state_history = torch.cat([self.imagination_state_history[:, 1:].clone(), imagination_states.unsqueeze(1)], dim=1)
 
 

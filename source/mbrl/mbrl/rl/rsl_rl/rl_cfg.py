@@ -12,24 +12,24 @@ from isaaclab.utils import configclass
 
 
 @configclass
-class RslRlSystemDynamicsCfg:
+class RslRlSystemDynamicsCfg: # 系统动力学网络配置
     """Configuration for the system dynamics networks."""
     
-    ensemble_size: int = MISSING
+    ensemble_size: int = MISSING 
     """The ensemble size of the system dynamics network."""
 
     history_horizon: int = MISSING
     """The prediction horizon of the system dynamics network."""
 
-    architecture_config: dict = MISSING
+    architecture_config: dict = MISSING # 系统动力学网络的架构配置，包含模型类型和各层的维度等信息
     """The architecture configuration of the system dynamics network."""
     
-    freeze_auxiliary: bool = MISSING
+    freeze_auxiliary: bool = MISSING # 是否冻结系统动力学网络中的辅助网络（如接触力预测网络、终止预测网络等），如果为True，则在训练过程中不更新这些辅助网络的参数。
     """Whether to freeze the auxiliary networks."""
 
 
 @configclass
-class RslRlNormalizerCfg:
+class RslRlNormalizerCfg: # 归一化器配置
     """Configuration for the normalizer."""
 
     mean: list[float] = MISSING
@@ -40,7 +40,7 @@ class RslRlNormalizerCfg:
 
 
 @configclass
-class RslRlMbrlImaginationCfg:
+class RslRlMbrlImaginationCfg: # imagination rollout 配置
     """Configuration for the imagination."""
     
     num_envs: int = MISSING
@@ -52,13 +52,13 @@ class RslRlMbrlImaginationCfg:
     max_episode_length: int = MISSING
     """The maximum episode length for the imagination."""
 
-    command_resample_interval_range: list[float] | None = MISSING
+    command_resample_interval_range: list[float] | None = MISSING 
     """The resample interval range for the command."""
     
     uncertainty_penalty_weight: float = MISSING
     """The weight for the uncertainty penalty."""
     
-    state_normalizer: RslRlNormalizerCfg = MISSING
+    state_normalizer: RslRlNormalizerCfg = MISSING 
     """The normalizer for the state."""
     
     action_normalizer: RslRlNormalizerCfg = MISSING
@@ -66,13 +66,13 @@ class RslRlMbrlImaginationCfg:
 
 
 @configclass
-class RslRlMbrlPpoAlgorithmCfg:
+class RslRlMbrlPpoAlgorithmCfg: # RSL-RL算法配置
     """Configuration for the PPO algorithm."""
 
     class_name: str = "MBPOPPO"
     """The algorithm class name. Default is PPO."""
 
-    value_loss_coef: float = MISSING
+    value_loss_coef: float = MISSING 
     """The coefficient for the value loss."""
 
     use_clipped_value_loss: bool = MISSING

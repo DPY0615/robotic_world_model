@@ -13,13 +13,13 @@ from typing import Any
 from isaaclab.envs.manager_based_rl_env import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
 
 
-class ManagerBasedMBRLEnv(ManagerBasedRLEnv):
+class ManagerBasedMBRLEnv(ManagerBasedRLEnv): # 基于系统动力学模型的MBRL环境，继承自ManagerBasedRLEnv
 
 
     def __init__(self, cfg: ManagerBasedRLEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
-        self.reward_term_names = self.reward_manager.active_terms
-        self._init_additional_attributes()
+        self.reward_term_names = self.reward_manager.active_terms # 奖励项名称列表，从reward_manager中获取当前激活的奖励项名称
+        self._init_additional_attributes() # 子类初始化一些额外的属性，这些属性可能在imagination rollout过程中使用
         # assigned in runner
         self.num_imagination_envs = None # type: int
         self.num_imagination_steps = None # type: int
@@ -33,101 +33,101 @@ class ManagerBasedMBRLEnv(ManagerBasedRLEnv):
         self.termination_flags = None # type: torch.Tensor | None
 
 
-    def prepare_imagination(self):
-        self.imagination_common_step_counter = 0
-        self.system_dynamics_model_ids = torch.randint(0, self.system_dynamics.ensemble_size, (1, self.num_imagination_envs, 1), device=self.device)
-        self._init_imagination_reward_buffer()
-        self._init_intervals()
-        self._init_additional_imagination_attributes()
-        self._init_imagination_command()
+    def prepare_imagination(self): # 准备imagination rollout的相关属性和缓冲区
+        self.imagination_common_step_counter = 0 # imagination rollout的公共步数计数器，在每次imagination step时递增，用于处理一些需要根据步数进行更新的属性
+        self.system_dynamics_model_ids = torch.randint(0, self.system_dynamics.ensemble_size, (1, self.num_imagination_envs, 1), device=self.device) # 每个imagination环境对应的系统动力学模型ID，随机初始化为0到ensemble_size-1之间的整数，在每次reset_imagination_idx时重新采样
+        self._init_imagination_reward_buffer() # 初始化imagination奖励缓冲区，用于记录每个imagination环境的当前episode长度、各奖励项的累计值和每步的奖励值
+        self._init_intervals() # 初始化一些命令、事件更新的间隔属性
+        self._init_additional_imagination_attributes() # 初始化一些额外的imagination属性，这些属性可能在imagination rollout过程中使用
+        self._init_imagination_command() # 初始化imagination命令属性，根据command_manager中定义的命令项进行采样
         self.last_obs = TensorDict({"policy": torch.zeros(self.num_imagination_envs, self.observation_manager.group_obs_dim["policy"][0])}, batch_size=[self.num_imagination_envs], device=self.device)
-        self.imagination_extras = {}
-        self._reset_imagination_idx(torch.arange(self.num_imagination_envs, device=self.device))
+        self.imagination_extras = {} # imagination step的extras字典，用于存储一些额外的信息
+        self._reset_imagination_idx(torch.arange(self.num_imagination_envs, device=self.device)) # 重置所有imagination环境的索引
 
 
-    def _reset_imagination_idx(self, env_ids):
-        self.imagination_extras["log"] = dict()
-        self.system_dynamics.reset_partial(env_ids)
-        self.system_dynamics_model_ids[:, env_ids, :] = torch.randint(0, self.system_dynamics.ensemble_size, (1, len(env_ids), 1), device=self.device)
-        info = self._reset_imagination_reward_buffer(env_ids)
-        self.imagination_extras["log"].update(info)
-        self._reset_intervals(env_ids)
-        self._reset_additional_imagination_attributes(env_ids)
-        self.last_obs["policy"][env_ids] = 0.0
+    def _reset_imagination_idx(self, env_ids):  # 重置指定imagination环境的索引，包括重置系统动力学模型ID、奖励缓冲区、命令等属性
+        self.imagination_extras["log"] = dict() # imagination step的extras字典中的log子字典，用于记录一些日志信息
+        self.system_dynamics.reset_partial(env_ids) # 重置指定imagination环境的系统动力学模型状态
+        self.system_dynamics_model_ids[:, env_ids, :] = torch.randint(0, self.system_dynamics.ensemble_size, (1, len(env_ids), 1), device=self.device) # 重新采样指定imagination环境的系统动力学模型ID
+        info = self._reset_imagination_reward_buffer(env_ids) # 重置指定imagination环境的奖励缓冲区，并返回一些统计信息，如各奖励项的平均episodic sum等，这些信息可以记录到imagination step的extras字典中的log子字典中
+        self.imagination_extras["log"].update(info) # 将重置奖励缓冲区返回的一些信息记录到imagination step的extras字典中的log子字典中
+        self._reset_intervals(env_ids) 
+        self._reset_additional_imagination_attributes(env_ids) # 重置指定imagination环境的一些额外属性
+        self.last_obs["policy"][env_ids] = 0.0 # 重置指定imagination环境的观测值为0
 
 
-    def _init_imagination_command(self):
+    def _init_imagination_command(self): # 初始化imagination命令属性，根据command_manager中定义的命令项进行采样
         for name, term in self.command_manager._terms.items():
-            setattr(self, name, term.sample_command(self.num_imagination_envs))
+            setattr(self, name, term.sample_command(self.num_imagination_envs)) # 对于command_manager中定义的每个命令项，调用其sample_command方法采样一个新的命令值，并将其设置为ManagerBasedMBRLEnv的一个属性，属性名与命令项名称相同，这样在imagination rollout过程中就可以通过访问这些属性来获取当前的命令值
 
 
-    def _reset_imagination_command(self, env_ids):
+    def _reset_imagination_command(self, env_ids): # 重置指定imagination环境的命令属性，根据command_manager中定义的命令项进行采样
         for name, term in self.command_manager._terms.items():
             getattr(self, name)[env_ids] = term.sample_command(len(env_ids))
 
     
-    def _init_imagination_reward_buffer(self):
-        self.imagination_episode_length_buf = torch.zeros(self.num_imagination_envs, device=self.device, dtype=torch.long)
+    def _init_imagination_reward_buffer(self): # 初始化imagination奖励缓冲区
+        self.imagination_episode_length_buf = torch.zeros(self.num_imagination_envs, device=self.device, dtype=torch.long) # imagination环境的当前episode长度缓冲区
         self.imagination_episode_sums = {
             term: torch.zeros(
                 self.num_imagination_envs,
                 device=self.device
                 ) for term in self.reward_term_names
-            }
-        self.imagination_episode_sums["uncertainty"] = torch.zeros(self.num_imagination_envs, device=self.device)
+            } # imagination环境的各奖励项的累计值缓冲区，键为奖励项名称，值为一个形状为(num_imagination_envs,)的张量，记录每个imagination环境当前episode中该奖励项的累计值
+        self.imagination_episode_sums["uncertainty"] = torch.zeros(self.num_imagination_envs, device=self.device) # 额外添加一个键为"uncertainty"的奖励项，用于记录每个imagination环境当前episode中的不确定性累计值
         self.imagination_reward_per_step = {
             term: torch.zeros(
                 self.num_imagination_envs,
                 device=self.device
-                ) for term in self.reward_term_names
-            }
+                ) for term in self.reward_term_names 
+            } # imagination环境的各奖励项的每步奖励值缓冲区，键为奖励项名称，值为一个形状为(num_imagination_envs,)的张量，记录每个imagination环境在当前step中该奖励项的奖励值
     
     
-    def _reset_imagination_reward_buffer(self, env_ids):
+    def _reset_imagination_reward_buffer(self, env_ids): # 重置指定imagination环境的奖励缓冲区，返回用于logging的统计信息
         extras = {}
         self.imagination_episode_length_buf[env_ids] = 0
-        for term in self.imagination_episode_sums.keys():
+        for term in self.imagination_episode_sums.keys(): # 对于需要reset的env，计算其当前episode中各奖励项的平均episodic sum，并记录到extras字典中，然后将imagination_episode_sums中对应env的累计值重置为0
             episodic_sum_avg = torch.mean(self.imagination_episode_sums[term][env_ids])
             extras[term] = episodic_sum_avg / (self.max_imagination_episode_length * self.step_dt)
             self.imagination_episode_sums[term][env_ids] = 0.0
         return extras
 
 
-    def _init_intervals(self):
+    def _init_intervals(self): # 初始化命令重采样间隔
         if self.imagination_command_resample_interval_range is None:
             return
         else:
             self.imagination_command_resample_intervals = torch.randint(self.imagination_command_resample_interval_range[0], self.imagination_command_resample_interval_range[1], (self.num_imagination_envs,), device=self.device)
 
 
-    def _reset_intervals(self, env_ids):
+    def _reset_intervals(self, env_ids): # 重置指定env的命令重采样间隔
         if self.imagination_command_resample_interval_range is None:
             return
         else:
             self.imagination_command_resample_intervals[env_ids] = torch.randint(self.imagination_command_resample_interval_range[0], self.imagination_command_resample_interval_range[1], (len(env_ids),), device=self.device)
 
-    def imagination_step(self, rollout_action, state_history, action_history):
-        rollout_action_normalized = self.imagination_action_normalizer(rollout_action)
-        action_history = torch.cat([action_history[:, 1:], rollout_action_normalized.unsqueeze(1)], dim=1)
-        imagination_states, aleatoric_uncertainty, self.epistemic_uncertainty, extensions, contacts, terminations = self.system_dynamics.forward(state_history, action_history, self.system_dynamics_model_ids)
-        imagination_states_denormalized = self.imagination_state_normalizer.inverse(imagination_states)
-        parsed_imagination_states = self._parse_imagination_states(imagination_states_denormalized)
-        parsed_extensions = self._parse_extensions(extensions)
-        parsed_contacts = self._parse_contacts(contacts)
-        self.termination_flags = self._parse_terminations(terminations)
-        self._compute_imagination_reward_terms(parsed_imagination_states, rollout_action, parsed_extensions, parsed_contacts)
-        rewards, dones, extras = self._post_imagination_step()
-        command_ids = self._process_command_env_ids()
-        self._reset_imagination_command(command_ids)
-        state_history = torch.cat([state_history[:, 1:], imagination_states.unsqueeze(1)], dim=1)
+    def imagination_step(self, rollout_action, state_history, action_history): # imagination rollout的核心函数，根据当前的状态历史和动作历史，以及rollout action，通过系统动力学模型预测下一个状态，并计算imagination step的奖励、done等信息
+        rollout_action_normalized = self.imagination_action_normalizer(rollout_action) # 对rollout action进行归一化处理
+        action_history = torch.cat([action_history[:, 1:], rollout_action_normalized.unsqueeze(1)], dim=1) # 将rollout action添加到动作历史中，形成新的动作历史，新的动作历史的形状为(num_imagination_envs, history_horizon, action_dim)，其中history_horizon是系统动力学模型的输入窗口大小
+        imagination_states, aleatoric_uncertainty, self.epistemic_uncertainty, extensions, contacts, terminations = self.system_dynamics.forward(state_history, action_history, self.system_dynamics_model_ids) # 将新的状态历史和动作历史输入系统动力学模型，预测下一个状态
+        imagination_states_denormalized = self.imagination_state_normalizer.inverse(imagination_states) # 对预测的下一个状态进行反归一化处理，得到原始尺度的状态值
+        parsed_imagination_states = self._parse_imagination_states(imagination_states_denormalized) # 解析预测的下一个状态
+        parsed_extensions = self._parse_extensions(extensions) # 解析预测的扩展信息
+        parsed_contacts = self._parse_contacts(contacts) # 解析预测的接触信息
+        self.termination_flags = self._parse_terminations(terminations) # 解析预测的终止信息
+        self._compute_imagination_reward_terms(parsed_imagination_states, rollout_action, parsed_extensions, parsed_contacts) # 根据解析的预测状态、rollout action、扩展信息和接触信息计算imagination step的各奖励项的奖励值，并记录到self.imagination_reward_per_step中
+        rewards, dones, extras = self._post_imagination_step() # 进行一些imagination step后的处理，计算总奖励、判断done、记录额外信息
+        command_ids = self._process_command_env_ids() # 处理需要重采样命令的env，返回需要重采样命令的env的索引
+        self._reset_imagination_command(command_ids) # 对于需要重采样命令的env，重新采样命令并更新对应的属性值
+        state_history = torch.cat([state_history[:, 1:], imagination_states.unsqueeze(1)], dim=1) # 将预测的下一个状态添加到状态历史中，形成新的状态历史，新的状态历史的形状为(num_imagination_envs, history_horizon, state_dim)，其中history_horizon是系统动力学模型的输入窗口大小
         return self.last_obs, rewards, dones, extras, state_history, action_history, self.epistemic_uncertainty
     
     
-    def _post_imagination_step(self):      
-        self.imagination_episode_length_buf += 1
-        self.imagination_common_step_counter += 1
+    def _post_imagination_step(self): # 进行一些imagination step的后处理     
+        self.imagination_episode_length_buf += 1 # imagination环境的当前episode长度缓冲区递增1
+        self.imagination_common_step_counter += 1 # imagination rollout的公共步数计数器递增1
         rewards = torch.zeros(self.num_imagination_envs, dtype=torch.float, device=self.device)
-        for term in self.imagination_episode_sums.keys():
+        for term in self.imagination_episode_sums.keys(): # 对于每个奖励项，计算其在当前step的奖励值，并累加到总奖励中，同时记录到imagination_episode_sums中
             if term == "uncertainty":
                 rewards += self.uncertainty_penalty_weight * self.epistemic_uncertainty * self.step_dt
                 self.imagination_episode_sums[term] += self.uncertainty_penalty_weight * self.epistemic_uncertainty * self.step_dt
@@ -138,17 +138,17 @@ class ManagerBasedMBRLEnv(ManagerBasedRLEnv):
                 self.imagination_episode_sums[term] += term_cfg.weight * term_value * self.step_dt
         
         terminated = self.termination_flags if self.termination_flags is not None else torch.zeros(self.num_imagination_envs, dtype=torch.bool, device=self.device)
-        time_outs = self.imagination_episode_length_buf >= self.max_imagination_episode_length
-        dones = (terminated | time_outs).to(dtype=torch.long)
+        time_outs = self.imagination_episode_length_buf >= self.max_imagination_episode_length 
+        dones = (terminated | time_outs).to(dtype=torch.long) 
 
         reset_env_ids = (terminated | time_outs).nonzero(as_tuple=False).squeeze(-1)
-        if len(reset_env_ids) > 0:
+        if len(reset_env_ids) > 0: # 如果有需要重置的env，则调用_reset_imagination_idx函数重置这些env的索引
             self._reset_imagination_idx(reset_env_ids)
         self.imagination_extras["time_outs"] = time_outs
         return rewards, dones, self.imagination_extras
 
 
-    def _process_command_env_ids(self):
+    def _process_command_env_ids(self): # 处理需要重采样命令的env，返回需要重采样命令的env的索引
         if self.imagination_command_resample_interval_range is None:
             return torch.empty(0, dtype=torch.int, device=self.device)
         else:

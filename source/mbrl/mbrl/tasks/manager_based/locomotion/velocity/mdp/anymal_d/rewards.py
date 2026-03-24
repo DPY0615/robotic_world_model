@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
-def joint_pos_stand_still(
+def joint_pos_stand_still( # 惩罚机器人在静止状态下姿态偏移的奖励函数，计算机器人的关节位置与默认关节位置之间的绝对误差，并乘以一个权重来得到最终的奖励值，如果机器人保持静止状态
     env: ManagerBasedRLEnv, command_name: str, threshold: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
     """Penalize joint position error from default on the articulation."""
@@ -20,7 +20,7 @@ def joint_pos_stand_still(
     return torch.sum(torch.abs(asset.data.joint_pos - asset.data.default_joint_pos), dim=1) * (command < threshold)
 
 
-def foot_clearance(
+def foot_clearance( # 奖励机器人在行走过程中脚部离地的奖励函数，计算机器人的脚部与地面之间的高度误差，并乘以一个权重来得到最终的奖励值
     env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, target_height: float, std: float, tanh_mult: float
 ) -> torch.Tensor:
     """Reward the swinging feet for clearing a specified height off the ground"""
