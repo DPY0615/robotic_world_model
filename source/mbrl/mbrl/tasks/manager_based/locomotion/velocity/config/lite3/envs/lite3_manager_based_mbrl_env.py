@@ -17,6 +17,41 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         self.default_joint_vel = self.scene["robot"].data.default_joint_vel[0] # 获取机器人的默认关节速度
         self.base_velocity = None # 速度命令，在计算奖励时会用到
     
+    def prepare_imagination(self):
+        self.imagination_common_step_counter = 0
+        self.system_dynamics_model_ids = torch.randint(
+            0, self.system_dynamics.ensemble_size, (1, self.num_imagination_envs, 1), device=self.device
+        )
+        self._init_imagination_reward_buffer()
+        self._init_intervals()
+        self._init_additional_imagination_attributes()
+        self._init_imagination_command()
+        self.last_obs = TensorDict(
+            {
+                "policy": torch.zeros(
+                    self.num_imagination_envs, self.observation_manager.group_obs_dim["policy"][0], device=self.device
+                ),
+                "critic": torch.zeros(
+                    self.num_imagination_envs, self.observation_manager.group_obs_dim["critic"][0], device=self.device
+                ),
+            },
+            batch_size=[self.num_imagination_envs],
+            device=self.device,
+        )
+        self._last_joint_vel_raw = torch.zeros(
+            self.num_imagination_envs,
+            self.default_joint_vel.shape[0],
+            device=self.device,
+        )
+        self.imagination_extras = {}
+        self._reset_imagination_idx(torch.arange(self.num_imagination_envs, device=self.device))
+
+    def _reset_imagination_idx(self, env_ids):
+        super()._reset_imagination_idx(env_ids)
+        if "critic" in self.last_obs.keys():
+            self.last_obs["critic"][env_ids] = 0.0
+        self._last_joint_vel_raw[env_ids] = 0.0
+
     def _init_additional_imagination_attributes(self):
         self.last_air_time = torch.zeros(self.num_imagination_envs, 4, device=self.device) # 最后一次离地时间
         self.current_air_time = torch.zeros(self.num_imagination_envs, 4, device=self.device) # 当前离地时间
@@ -36,8 +71,11 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         obs_joint_pos = self.imagination_state_normalizer.inverse(state_history[:, -1])[:, 9:21]
         obs_joint_vel = self.imagination_state_normalizer.inverse(state_history[:, -1])[:, 21:33]
         self.obs_last_action = self.imagination_action_normalizer.inverse(action_history[:, -1])
+        self._last_joint_vel_raw = obs_joint_vel.clone()
+        base_ang_vel_scale = getattr(self.cfg.observations.policy.base_ang_vel, "scale", 1.0)
+        joint_vel_scale = getattr(self.cfg.observations.policy.joint_vel, "scale", 1.0)
         
-        critic_base_lin_vel = obs_base_ang_vel
+        critic_base_lin_vel = obs_base_lin_vel
         critic_base_ang_vel = obs_base_ang_vel
         critic_projected_gravity = obs_projected_gravity
         critic_joint_pos = obs_joint_pos
@@ -53,6 +91,9 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
             policy_projected_gravity += 2 * (torch.rand_like(policy_projected_gravity) - 0.5) * 0.05
             policy_joint_pos += 2 * (torch.rand_like(policy_joint_pos) - 0.5) * 0.01
             policy_joint_vel += 2 * (torch.rand_like(policy_joint_vel) - 0.5) * 1.5
+
+        policy_base_ang_vel = policy_base_ang_vel * base_ang_vel_scale
+        policy_joint_vel = policy_joint_vel * joint_vel_scale
 
         policy_obs = torch.cat(
             [policy_base_ang_vel, policy_projected_gravity, self.base_velocity, policy_joint_pos, policy_joint_vel, self.obs_last_action],
@@ -85,6 +126,7 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
             "joint_vel": joint_vel,
             "joint_torque": joint_torque,
         }
+        self._latest_projected_gravity = projected_gravity
         return parsed_imagination_states
     
     def _parse_extensions(self, extensions):
@@ -106,7 +148,16 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
     
     def _parse_terminations(self, terminations): # 解析终止信息，经过 sigmoid 和 round 处理后得到二值化的终止状态
         parsed_terminations = torch.sigmoid(terminations).squeeze(-1).round().bool() if terminations is not None else None
-        return parsed_terminations
+        bad_orientation_2 = None
+        if hasattr(self, "_latest_projected_gravity"):
+            bad_orientation_2 = (self._latest_projected_gravity[:, 2] > 0) | (
+                self._latest_projected_gravity[:, :2].abs() > 0.7
+            ).any(-1)
+        if parsed_terminations is None:
+            return bad_orientation_2
+        if bad_orientation_2 is None:
+            return parsed_terminations
+        return parsed_terminations | bad_orientation_2
     
     def _compute_imagination_reward_terms(
         self,
@@ -122,8 +173,7 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         joint_vel = parsed_imagination_states["joint_vel"]
         joint_torque = parsed_imagination_states["joint_torque"]
 
-        # Lite3 policy obs: [ang(0:3), gravity(3:6), cmd(6:9), q(9:21), dq(21:33), a(33:45)]
-        prev_joint_vel = self.last_obs["policy"][:, 21:33]
+        prev_joint_vel = self._last_joint_vel_raw
         joint_acc = (joint_vel - prev_joint_vel) / self.step_dt
 
         thigh_contact = None if parsed_contacts is None else parsed_contacts.get("thigh_contact", None)
@@ -135,8 +185,10 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         lin_vel_error = torch.sum(torch.square(self.base_velocity[:, :2] - base_lin_vel[:, :2]), dim=1)
         ang_vel_error = torch.square(self.base_velocity[:, 2] - base_ang_vel[:, 2])
 
-        track_lin_vel_xy_exp = torch.exp(-lin_vel_error / 0.25)
-        track_ang_vel_z_exp = torch.exp(-ang_vel_error / 0.25)
+        track_lin_vel_xy_std = self.reward_manager.get_term_cfg("track_lin_vel_xy_exp").params["std"]
+        track_ang_vel_z_std = self.reward_manager.get_term_cfg("track_ang_vel_z_exp").params["std"]
+        track_lin_vel_xy_exp = torch.exp(-lin_vel_error / track_lin_vel_xy_std**2)
+        track_ang_vel_z_exp = torch.exp(-ang_vel_error / track_ang_vel_z_std**2)
         lin_vel_z_l2 = torch.square(base_lin_vel[:, 2])
         ang_vel_xy_l2 = torch.sum(torch.square(base_ang_vel[:, :2]), dim=1)
 
@@ -147,8 +199,8 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         action_rate_l2 = torch.sum(torch.square(self.obs_last_action - rollout_action), dim=1)
         flat_orientation_l2 = torch.sum(torch.square(projected_gravity[:, :2]), dim=1)
 
-        # Lite3 : [HipX, HipY, Knee]
-        joint_pos_error = joint_pos - self.default_joint_pos.unsqueeze(0)
+        # The world-model state stores joint_pos_rel, so this is already an offset from default pose.
+        joint_pos_error = joint_pos
         hipx_ids = [0, 3, 6, 9]
         joint_deviation_l1 = torch.sum(torch.abs(joint_pos_error[:, hipx_ids]), dim=1)
 
@@ -166,7 +218,7 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
                 self.current_contact_time < (self.step_dt + 1.0e-8)
             )
 
-            feet_air_time = torch.sum((self.last_air_time - 0.5) * first_contact, dim=1) * (cmd_xy_norm > 0.1)
+            feet_air_time = torch.sum((self.last_air_time - 0.5) * first_contact, dim=1) * (cmd_norm > 0.1)
             feet_contact_without_cmd = torch.sum(first_contact.float(), dim=1) * (cmd_norm < 0.5)
 
             is_contact = foot_contact.bool()
@@ -223,14 +275,17 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
             "feet_contact_without_cmd": feet_contact_without_cmd,
         }
 
-        # Keep last_obs aligned with your Lite3 policy obs layout (45 dim)
+        base_ang_vel_scale = getattr(self.cfg.observations.policy.base_ang_vel, "scale", 1.0)
+        joint_vel_scale = getattr(self.cfg.observations.policy.joint_vel, "scale", 1.0)
+
+        # Keep last_obs aligned with Lite3 real policy observation scaling.
         last_policy_obs = torch.cat(
             [
-                base_ang_vel,
+                base_ang_vel * base_ang_vel_scale,
                 projected_gravity,
                 self.base_velocity,
                 joint_pos,
-                joint_vel,
+                joint_vel * joint_vel_scale,
                 rollout_action,
             ],
             dim=1,

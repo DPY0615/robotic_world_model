@@ -21,6 +21,23 @@ from .rough_env_cfg import DeeproboticsLite3RoughEnvCfg
 
 @configclass
 class DeeproboticsLite3FlatEnvCfg(DeeproboticsLite3RoughEnvCfg):
+    def disable_mbrl_unsupported_rewards(self):
+        # These terms depend on signals that the current world model does not output.
+        unsupported_reward_names = [
+            "base_height_l2",
+            "feet_slide",
+            "feet_height",
+            "feet_height_body",
+            "contact_forces",
+            "feet_gait",
+            "joint_mirror",
+            "joint_pos_limits",
+        ]
+        for reward_name in unsupported_reward_names:
+            reward_term = getattr(self.rewards, reward_name, None)
+            if reward_term is not None:
+                reward_term.weight = 0.0
+
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
@@ -38,6 +55,8 @@ class DeeproboticsLite3FlatEnvCfg(DeeproboticsLite3RoughEnvCfg):
             self.observations.critic.height_scan = None
         # no terrain curriculum
         self.curriculum.terrain_levels = None # 关掉地形课程
+
+        self.rewards.undesired_contacts.params["sensor_cfg"].body_names = [".*_THIGH"]
 
         # If the weight of rewards is 0, set rewards to None
         if self.__class__.__name__ == "DeeproboticsLite3FlatEnvCfg":
@@ -110,7 +129,7 @@ class ObservationsCfg_PRETRAIN(ObservationsCfg):
 
     @configclass
     class SystemTerminationCfg(ObsGroup):
-        # Lite3 base link name is TORSO
+        # Lite3 base link name is TORSO.
         base_contact = ObsTerm(
             func=mdp.body_contact,
             params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="TORSO"), "threshold": 1.0},
@@ -133,6 +152,7 @@ class DeeproboticsLite3FlatEnvCfg_PRETRAIN(DeeproboticsLite3FlatEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        self.disable_mbrl_unsupported_rewards()
         self.disable_zero_weight_rewards()
 
 @configclass
@@ -151,6 +171,7 @@ class DeeproboticsLite3FlatEnvCfg_FINETUNE(DeeproboticsLite3FlatEnvCfg_PRETRAIN)
         # use sampled velocity command class in finetune
         self.commands.base_velocity.class_type = SampleUniformVelocityCommand
 
+        self.disable_mbrl_unsupported_rewards()
         self.disable_zero_weight_rewards()
 
 @configclass
@@ -186,4 +207,5 @@ class DeeproboticsLite3FlatEnvCfg_VISUALIZE(DeeproboticsLite3FlatEnvCfg_PRETRAIN
         }
         self.events.randomize_reset_joints.func = mdp.reset_joints_by_scale_visualize
 
+        self.disable_mbrl_unsupported_rewards()
         self.disable_zero_weight_rewards()
