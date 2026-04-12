@@ -33,7 +33,7 @@ class DeeproboticsLite3RoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.01,
+        entropy_coef=0.005,
         num_learning_epochs=5,
         num_mini_batches=4,
         learning_rate=1.0e-3,
@@ -52,6 +52,18 @@ class DeeproboticsLite3FlatPPORunnerCfg(DeeproboticsLite3RoughPPORunnerCfg):
 
         self.max_iterations = 10000
         self.experiment_name = "deeprobotics_lite3_flat"
+
+
+@configclass
+class DeeproboticsLite3FlatPPOPlayRunnerCfg(DeeproboticsLite3FlatPPORunnerCfg):
+    policy = RslRlPpoActorCriticCfg(
+        init_noise_std=1.0,
+        noise_std_type="log",
+        actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[512, 256, 128],
+        activation="elu",
+    )
+
 
 @configclass
 class DeeproboticsLite3FlatPPOPretrainRunnerCfg(DeeproboticsLite3FlatPPORunnerCfg):
@@ -81,44 +93,44 @@ class DeeproboticsLite3FlatPPOPretrainRunnerCfg(DeeproboticsLite3FlatPPORunnerCf
         uncertainty_penalty_weight=-0.0,
         state_normalizer=RslRlNormalizerCfg(
             mean=[
-                -0.0, 0.0, -0.0,
                 0.0, 0.0, 0.0,
-                -0.0, 0.0, -1.0,
-                0.0, -0.0, 0.0,
-                -0.0, -0.0, 0.0, -0.1, -0.1, 0.3,
-                0.3, 0.2, 0.3,
-                0.0, -0.0, 0.1, -0.1,
-                -0.5, -0.6, -0.7, -0.5,
-                1.1, 1.4, 1.6, 1.4,
-                -0.0, -0.8, 1.1, -0.4, 0.9, 0.4,
-                -1.4, -1.5, -3.8, -5.3, -7.2, -5.6,
+                0.0, 0.0, 0.0,
+                0.0, 0.0, -1.0,
+                0.0, 0.0, 0.0,
+                0.0, 0.1, 0.0, -0.2, -0.2, 0.4,
+                0.4, 0.3, 0.3,
+                0.0, 0.0, 0.1, -0.1,
+                -0.5, -0.6, -0.5, -0.5,
+                1.1, 1.2, 1.3, 1.3,
+                0.4, -0.6, 1.0, -0.7, 0.6, 0.6,
+                -1.3, -1.3, -4.4, -4.6, -6.0, -6.0,
             ],
             std=[
                 0.8, 0.4, 0.2,
-                1.0, 0.9, 0.4,
+                0.9, 0.8, 0.3,
                 0.1, 0.1, 0.1,
                 0.1, 0.1, 0.1,
-                0.1, 0.2, 0.2, 0.2, 0.2, 0.2,
+                0.1, 0.3, 0.3, 0.3, 0.3, 0.2,
                 0.2, 0.2, 0.2,
-                2.2, 2.3, 2.3, 2.2,
-                4.8, 5.0, 4.6, 4.6,
-                6.3, 6.2, 6.2, 6.2,
-                2.7, 3.1, 3.2, 2.9, 4.7, 4.8,
-                4.5, 4.4, 9.0, 9.3, 9.9, 9.3,
+                2.1, 2.2, 2.2, 2.1,
+                6.0, 5.1, 4.8, 5.0,
+                5.6, 5.9, 5.6, 5.6,
+                2.7, 2.7, 3.0, 2.9, 4.3, 4.2,
+                4.2, 4.1, 8.7, 8.2, 8.6, 9.1,
             ],
         ),
         action_normalizer=RslRlNormalizerCfg(
             mean=[
-                0.0, -0.1, 1.0,
-                -0.3, 0.0, 0.5,
-                0.4, -0.7, 0.2,
-                -0.2, -0.8, 0.5,
+                0.2, 0.5, 1.1,
+                -0.3, -0.1, 1.2,
+                0.3, -0.9, 0.6,
+                -0.3, -1.1, 0.7,
             ],
             std=[
-                1.0, 1.0, 1.6,
-                1.2, 1.1, 1.5,
-                1.1, 1.0, 1.5,
-                1.0, 1.0, 1.6,
+                1.1, 1.5, 1.5,
+                1.1, 1.3, 1.6,
+                1.2, 1.2, 1.4,
+                1.1, 1.3, 1.5,
             ],
         ),
     )
@@ -179,10 +191,11 @@ class DeeproboticsLite3FlatPPOPretrainRunnerCfg(DeeproboticsLite3FlatPPORunnerCf
 
 @configclass
 class DeeproboticsLite3FlatPPOFinetuneRunnerCfg(DeeproboticsLite3FlatPPOPretrainRunnerCfg):
-    resume = True
-    load_run = "2026-03-24_19-29-38_pretrain"
+    resume = False
+    load_run = ".*pretrain.*"
+    load_checkpoint = "model_.*.pt"
     load_system_dynamics = True
-    system_dynamics_load_path = "logs/rsl_rl/deeprobotics_lite3_flat/2026-03-24_19-29-38/pretrain/model_2000.pt"
+    system_dynamics_load_path = None
     system_dynamics_warmup_iterations = 500
     run_name = "finetune"
 
@@ -197,9 +210,47 @@ class DeeproboticsLite3FlatPPOFinetuneRunnerCfg(DeeproboticsLite3FlatPPOPretrain
 
 
 @configclass
+class DeeproboticsLite3FlatPPOFinetuneStableRunnerCfg(DeeproboticsLite3FlatPPOFinetuneRunnerCfg):
+    run_name = "finetune_stable_reward"
+
+
+@configclass
+class DeeproboticsLite3FlatPPOFinetuneConservativeRunnerCfg(DeeproboticsLite3FlatPPOFinetuneRunnerCfg):
+    run_name = "finetune_reward_conservative"
+
+
+@configclass
+class DeeproboticsLite3FlatPPOFinetuneAggressiveRunnerCfg(DeeproboticsLite3FlatPPOFinetuneRunnerCfg):
+    run_name = "finetune_reward_aggressive"
+
+
+@configclass
+class DeeproboticsLite3FlatPPOFinetuneAnymalRefRunnerCfg(DeeproboticsLite3FlatPPOFinetuneRunnerCfg):
+    run_name = "finetune_reward_anymal_ref"
+
+
+@configclass
+class DeeproboticsLite3FlatPPOFinetuneLowShapingRunnerCfg(DeeproboticsLite3FlatPPOFinetuneRunnerCfg):
+    run_name = "finetune_reward_low_shaping"
+
+
+@configclass
+class DeeproboticsLite3FlatPPOFinetuneAnymalRefScratchRunnerCfg(DeeproboticsLite3FlatPPOFinetuneAnymalRefRunnerCfg):
+    resume = False
+    run_name = "finetune_reward_anymal_ref_scratch"
+
+
+@configclass
+class DeeproboticsLite3FlatPPOFinetuneLowShapingScratchRunnerCfg(DeeproboticsLite3FlatPPOFinetuneLowShapingRunnerCfg):
+    resume = False
+    run_name = "finetune_reward_low_shaping_scratch"
+
+
+@configclass
 class DeeproboticsLite3FlatPPOVisualizeRunnerCfg(DeeproboticsLite3FlatPPOPretrainRunnerCfg):
     resume = True
+    load_run = ".*pretrain.*"
+    load_checkpoint = "model_.*.pt"
     load_system_dynamics = True
-    system_dynamics_load_path = "logs/rsl_rl/deeprobotics_lite3_flat/2026-03-24_19-29-38/pretrain/model_2000.pt"
+    system_dynamics_load_path = None
     run_name = "visualize"
-    

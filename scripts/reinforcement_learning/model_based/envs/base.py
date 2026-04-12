@@ -26,7 +26,7 @@ class BaseEnv:
         self.command_resample_interval_range = command_resample_interval_range
         self.event_interval_range = event_interval_range
         self._init_additional_attributes()
-        self.dummy_obs = TensorDict({"policy": torch.zeros(num_envs, self.observation_dim)}, batch_size=[num_envs], device=self.device)
+        self.dummy_obs = self._build_dummy_obs()
 
         # set in experiment
         self.system_dynamics = None
@@ -48,6 +48,13 @@ class BaseEnv:
         self.init_dataset = init_dataset
         self.init_data_ratio = init_data_ratio
 
+    def _build_dummy_obs(self):
+        return TensorDict(
+            {"policy": torch.zeros(self._num_envs, self.observation_dim, device=self.device)},
+            batch_size=[self._num_envs],
+            device=self.device,
+        )
+
     def prepare_imagination(self):
         self.common_step_counter = 0
         self.system_dynamics.reset()
@@ -57,7 +64,7 @@ class BaseEnv:
         self._init_additional_imagination_attributes()
         state_history, action_history = self._init_imagination_history()
         self._init_imagination_command()
-        self.last_obs = TensorDict({"policy": torch.zeros(self._num_envs, self.observation_dim)}, batch_size=[self._num_envs], device=self.device)
+        self.last_obs = self._build_dummy_obs()
         self.extras = {}
         self._reset_idx(torch.arange(self._num_envs, device=self.device))
         return state_history, action_history
@@ -70,7 +77,8 @@ class BaseEnv:
         self.extras["log"].update(info)
         self._reset_intervals(env_ids)
         self._reset_additional_imagination_attributes(env_ids)
-        self.last_obs["policy"][env_ids] = 0.0
+        for key in self.last_obs.keys():
+            self.last_obs[key][env_ids] = 0.0
 
     def _init_imagination_history(self):
         num_init_envs = int(self._num_envs * self.init_data_ratio)
@@ -199,6 +207,10 @@ class BaseEnv:
     @property
     def max_episode_length(self):
         return self._max_episode_length
+
+    @property
+    def step_dt(self):
+        return self._step_dt
 
     def _init_additional_imagination_attributes(self):
         raise NotImplementedError

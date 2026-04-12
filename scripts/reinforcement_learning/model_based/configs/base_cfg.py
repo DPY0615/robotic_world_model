@@ -15,10 +15,10 @@ class BaseConfig:
             return asdict(self)
 
     @dataclass
-    class EnvironmentConfig: # 环境配置类
+    class EnvironmentConfig:
         num_envs: int = 8192
         max_episode_length: int = 256
-        step_dt: float = 0.02 # 环境步长，对应控制频率50Hz
+        step_dt: float = 0.02 
         reward_term_weights: Dict[str, float] = field(default_factory=lambda: {"dummy": 0.0})
         uncertainty_penalty_weight: float = -0.0
         observation_noise: bool = True
@@ -29,19 +29,19 @@ class BaseConfig:
             return asdict(self)
     
     @dataclass
-    class DataConfig: ## 数据配置类       
-        dataset_root: str = "logs/online" # 数据集根目录
-        dataset_folder: str = "train" # 数据集文件夹，通常为train 
+    class DataConfig:       
+        dataset_root: str = "logs/online"
+        dataset_folder: str = "train" 
         file_data_size: int = 10000 
         batch_data_size: int = 50000
 
-        state_idx_dict: Dict[str, List[int]] = field(default_factory=lambda: {"dummy": [0]}) # 状态索引字典，键为状态组名，值为对应的状态维度索引列表
+        state_idx_dict: Dict[str, List[int]] = field(default_factory=lambda: {"dummy": [0]}) 
         state_data_mean: List[float] = field(default_factory=lambda: [0.0]) 
         state_data_std: List[float] = field(default_factory=lambda: [0.0])
         action_data_mean: List[float] = field(default_factory=lambda: [0.0])
-        action_data_std: List[float] = field(default_factory=lambda: [0.0]) # 数据标准化参数，分别为状态和动作的均值和标准差列表，用于归一化
+        action_data_std: List[float] = field(default_factory=lambda: [0.0]) 
 
-        init_data_ratio: float = 0.8 # 初始化数据比例，reset/初始化时有多少比例的env从init_dataset采样
+        init_data_ratio: float = 0.8 
         num_eval_trajectories: int = 10
         len_eval_trajectory: int = 400
         num_visualizations: int = 4
@@ -50,7 +50,7 @@ class BaseConfig:
             return asdict(self)
         
     @dataclass
-    class ModelArchitectureConfig: # 世界模型架构配置类
+    class ModelArchitectureConfig: 
         history_horizon: int = 1 # the window size of the input state transitions
         forecast_horizon: int = 1 # the autoregressive prediction steps
         extension_dim: int = 0
@@ -71,6 +71,7 @@ class BaseConfig:
         #     "type": "rnn",
         #     "rnn_type": "gru",
         #     "rnn_num_layers": 2,
+        
         #     "rnn_hidden_size": 256,
         #     "state_mean_shape": [128],
         #     "state_logstd_shape": [128],
@@ -85,7 +86,7 @@ class BaseConfig:
             return asdict(self)
     
     @dataclass
-    class PolicyArchitectureConfig: # 策略网络架构配置类
+    class PolicyArchitectureConfig: 
         observation_dim: int = 0
         obs_groups: Dict[str, List[str]] = field(default_factory=lambda: {"policy": ["policy"]})
         action_dim: int = 0
@@ -93,13 +94,14 @@ class BaseConfig:
         critic_hidden_dims: List[int] = field(default_factory=lambda: [128, 128, 128])
         activation: str = "elu"
         init_noise_std: float = 1.0
+        noise_std_type: str = "scalar"
         resume_path: str | None = None
 
         def to_dict(self):
             return asdict(self)
 
     @dataclass
-    class PolicyAlgorithmConfig: # 策略算法配置类
+    class PolicyAlgorithmConfig: 
         value_loss_coef: float = 1.0
         use_clipped_value_loss: bool = True
         clip_param: float = 0.2

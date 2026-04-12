@@ -46,21 +46,21 @@ class DeeproboticsLite3FlatEnvCfg(DeeproboticsLite3RoughEnvCfg):
         # override rewards
         # self.rewards.base_height_l2.params["sensor_cfg"] = None
         # change terrain to flat
-        self.scene.terrain.terrain_type = "plane" # 地形类型设为平面
-        self.scene.terrain.terrain_generator = None # 不使用地形生成器，直接使用平面地形
+        self.scene.terrain.terrain_type = "plane" 
+        self.scene.terrain.terrain_generator = None 
         # no height scan
         # self.scene.height_scanner = None
-        self.observations.policy.height_scan = None  # 观测去掉高度扫描数据
+        self.observations.policy.height_scan = None 
         if hasattr(self.observations, "critic"):
             self.observations.critic.height_scan = None
         # no terrain curriculum
-        self.curriculum.terrain_levels = None # 关掉地形课程
+        self.curriculum.terrain_levels = None 
 
         self.rewards.undesired_contacts.params["sensor_cfg"].body_names = [".*_THIGH"]
 
         # If the weight of rewards is 0, set rewards to None
         if self.__class__.__name__ == "DeeproboticsLite3FlatEnvCfg":
-            self.disable_zero_weight_rewards() # 如果当前配置类是DeeproboticsLite3FlatEnvCfg，则禁用权重为0的奖励
+            self.disable_zero_weight_rewards() 
 
 @configclass
 class DeeproboticsLite3FlatEnvCfg_INIT(DeeproboticsLite3FlatEnvCfg):
@@ -171,6 +171,26 @@ class DeeproboticsLite3FlatEnvCfg_FINETUNE(DeeproboticsLite3FlatEnvCfg_PRETRAIN)
         # use sampled velocity command class in finetune
         self.commands.base_velocity.class_type = SampleUniformVelocityCommand
 
+        # Default finetune reward profile uses the selected global_spike tuning.
+        self.rewards.track_lin_vel_xy_exp.weight = 2.1
+        self.rewards.track_ang_vel_z_exp.weight = 1.0
+        self.rewards.track_lin_vel_xy_exp.params["std"] = 1.05
+        self.rewards.track_ang_vel_z_exp.params["std"] = 1.05
+
+        self.rewards.flat_orientation_l2.weight = -8.8
+        self.rewards.lin_vel_z_l2.weight = -3.4
+        self.rewards.ang_vel_xy_l2.weight = -0.15
+        self.rewards.action_rate_l2.weight = -0.055
+
+        self.rewards.feet_air_time.weight = 0.4
+        self.rewards.feet_air_time.params["threshold"] = 0.28
+        self.rewards.feet_air_time_variance.weight = -0.3
+
+        self.rewards.joint_deviation_l1.weight = -0.07
+        self.rewards.stand_still.weight = 0.0
+        self.rewards.stand_still.params["command_threshold"] = 0.02
+        self.rewards.feet_contact_without_cmd.weight = 0.0
+        
         self.disable_mbrl_unsupported_rewards()
         self.disable_zero_weight_rewards()
 

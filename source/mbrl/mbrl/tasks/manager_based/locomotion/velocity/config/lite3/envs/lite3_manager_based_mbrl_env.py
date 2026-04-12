@@ -64,7 +64,7 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         self.last_contact_time[env_ids] = 0.0
         self.current_contact_time[env_ids] = 0.0
     
-    def get_imagination_observation(self, state_history, action_history, observation_noise=True): # 从状态历史和动作历史中获取 imagination observation
+    def get_imagination_observation(self, state_history, action_history, observation_noise=None): # 从状态历史和动作历史中获取 imagination observation
         obs_base_lin_vel = self.imagination_state_normalizer.inverse(state_history[:, -1])[:, 0:3] 
         obs_base_ang_vel = self.imagination_state_normalizer.inverse(state_history[:, -1])[:, 3:6]
         obs_projected_gravity = self.imagination_state_normalizer.inverse(state_history[:, -1])[:, 6:9]
@@ -72,6 +72,8 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         obs_joint_vel = self.imagination_state_normalizer.inverse(state_history[:, -1])[:, 21:33]
         self.obs_last_action = self.imagination_action_normalizer.inverse(action_history[:, -1])
         self._last_joint_vel_raw = obs_joint_vel.clone()
+        if observation_noise is None:
+            observation_noise = bool(getattr(self.cfg.observations.policy, "enable_corruption", False))
         base_ang_vel_scale = getattr(self.cfg.observations.policy.base_ang_vel, "scale", 1.0)
         joint_vel_scale = getattr(self.cfg.observations.policy.joint_vel, "scale", 1.0)
         
@@ -185,8 +187,16 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         lin_vel_error = torch.sum(torch.square(self.base_velocity[:, :2] - base_lin_vel[:, :2]), dim=1)
         ang_vel_error = torch.square(self.base_velocity[:, 2] - base_ang_vel[:, 2])
 
-        track_lin_vel_xy_std = self.reward_manager.get_term_cfg("track_lin_vel_xy_exp").params["std"]
-        track_ang_vel_z_std = self.reward_manager.get_term_cfg("track_ang_vel_z_exp").params["std"]
+        track_lin_vel_xy_std = 0.71
+        if "track_lin_vel_xy_exp" in self.reward_term_names:
+            track_lin_vel_xy_std = self.reward_manager.get_term_cfg("track_lin_vel_xy_exp").params.get(
+                "std", track_lin_vel_xy_std
+            )
+        track_ang_vel_z_std = 0.71
+        if "track_ang_vel_z_exp" in self.reward_term_names:
+            track_ang_vel_z_std = self.reward_manager.get_term_cfg("track_ang_vel_z_exp").params.get(
+                "std", track_ang_vel_z_std
+            )
         track_lin_vel_xy_exp = torch.exp(-lin_vel_error / track_lin_vel_xy_std**2)
         track_ang_vel_z_exp = torch.exp(-ang_vel_error / track_ang_vel_z_std**2)
         lin_vel_z_l2 = torch.square(base_lin_vel[:, 2])
@@ -204,7 +214,16 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         hipx_ids = [0, 3, 6, 9]
         joint_deviation_l1 = torch.sum(torch.abs(joint_pos_error[:, hipx_ids]), dim=1)
 
-        stand_still = torch.sum(torch.abs(joint_pos_error), dim=1) * (cmd_norm < 0.1)
+        stand_still_threshold = 0.06
+        if "stand_still" in self.reward_term_names:
+            stand_still_threshold = self.reward_manager.get_term_cfg("stand_still").params.get(
+                "command_threshold", stand_still_threshold
+            )
+        elif "stand_still_without_cmd" in self.reward_term_names:
+            stand_still_threshold = self.reward_manager.get_term_cfg("stand_still_without_cmd").params.get(
+                "command_threshold", stand_still_threshold
+            )
+        stand_still = torch.sum(torch.abs(joint_pos_error), dim=1) * (cmd_xy_norm < stand_still_threshold)
 
         # Defaults for contact-derived terms
         feet_air_time = torch.zeros(self.num_imagination_envs, device=self.device)

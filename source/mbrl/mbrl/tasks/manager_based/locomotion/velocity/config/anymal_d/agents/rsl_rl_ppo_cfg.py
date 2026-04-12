@@ -48,7 +48,7 @@ class AnymalDFlatPPOPretrainRunnerCfg(AnymalDFlatPPORunnerCfg):
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                 -2.0, -2.0, 2.0, 2.0, -6.0, 8.0, -6.0, 8.0, 12.0, -12.0, 12.0, -12.0,
-                ],
+            ],
             std=[
                 0.5, 0.5, 0.1,
                 0.3, 0.3, 0.5,
@@ -56,7 +56,7 @@ class AnymalDFlatPPOPretrainRunnerCfg(AnymalDFlatPPORunnerCfg):
                 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15,
                 1.0, 1.0, 1.0, 1.0, 1.5, 1.5, 1.5, 1.5, 2.5, 2.5, 2.5, 2.5,
                 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0,
-                ],
+            ],
         ),
         action_normalizer=RslRlNormalizerCfg(
             mean=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -85,7 +85,7 @@ class AnymalDFlatPPOPretrainRunnerCfg(AnymalDFlatPPORunnerCfg):
         system_dynamics_replay_buffer_size=1000,
         system_dynamics_num_eval_trajectories=100,
         system_dynamics_len_eval_trajectory=400,
-        system_dynamics_eval_traj_noise_scale=[0.1, 0.2, 0.4, 0.5, 0.8], # 世界模型参数
+        system_dynamics_eval_traj_noise_scale=[0.1, 0.2, 0.4, 0.5, 0.8],
     )
     run_name = "pretrain"
     load_system_dynamics = False
@@ -105,12 +105,12 @@ class AnymalDFlatPPOPretrainRunnerCfg(AnymalDFlatPPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.max_iterations = 2000
 
 @configclass
-class AnymalDFlatPPOFinetuneRunnerCfg(AnymalDFlatPPOPretrainRunnerCfg): # 微调配置
+class AnymalDFlatPPOFinetuneRunnerCfg(AnymalDFlatPPOPretrainRunnerCfg):
     resume = True
-    load_run = "2026-03-05_16-41-06"
+    load_run = ".*pretrain.*"
+    load_checkpoint = "model_.*.pt"
     load_system_dynamics = True
     system_dynamics_load_path = "logs/rsl_rl/anymal_d_flat/2026-03-05_16-41-06_pretrain/model_2000.pt"
     system_dynamics_warmup_iterations = 500
@@ -129,6 +129,8 @@ class AnymalDFlatPPOFinetuneRunnerCfg(AnymalDFlatPPOPretrainRunnerCfg): # 微调
 @configclass
 class AnymalDFlatPPOVisualizeRunnerCfg(AnymalDFlatPPOPretrainRunnerCfg):
     resume = True
+    load_run = ".*pretrain.*"
+    load_checkpoint = "model_.*.pt"
     load_system_dynamics = True
-    system_dynamics_load_path = "logs/rsl_rl/anymal_d_flat/2025-11-04_14-31-20_pretrain_rnn/model_5000.pt"
+    system_dynamics_load_path = None
     run_name = "visualize"

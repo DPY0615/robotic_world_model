@@ -222,7 +222,7 @@ class ModelBasedExperiment:
         self.env.set_system_dynamics(self.system_dynamics)
             
 
-    def prepare_policy(self, observation_dim, obs_groups, action_dim, actor_hidden_dims, critic_hidden_dims, activation, init_noise_std, resume_path=None):
+    def prepare_policy(self, observation_dim, obs_groups, action_dim, actor_hidden_dims, critic_hidden_dims, activation, init_noise_std, noise_std_type="scalar", resume_path=None):
         self.observation_dim = observation_dim
         default_sets = ["critic"]
         obs_groups = resolve_obs_groups(self.env.dummy_obs, obs_groups, default_sets)
@@ -234,6 +234,7 @@ class ModelBasedExperiment:
             critic_hidden_dims=critic_hidden_dims,
             activation=activation,
             init_noise_std=init_noise_std,
+            noise_std_type=noise_std_type,
             ).to(self.device)
         self.policy_learning_iteration = 0
         if resume_path is not None:

@@ -144,7 +144,12 @@ class PolicyTraining: # 策略训练器类: 负责初始化PPO的rollout storage
                 })
                 ep_string += f"""{f'Mean episode {key}:':>{pad}} {value:.4f}\n"""
 
-        mean_std = self.alg.policy.std.mean()
+        if hasattr(self.alg.policy, "std"):
+            mean_std = self.alg.policy.std.mean()
+        elif hasattr(self.alg.policy, "log_std"):
+            mean_std = self.alg.policy.log_std.exp().mean()
+        else:
+            mean_std = self.alg.policy.action_std.mean()
         fps = int(self.num_steps_per_env * self.env.num_envs / (locs["collection_time"] + locs["learn_time"]))
         
 

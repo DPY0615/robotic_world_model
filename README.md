@@ -192,10 +192,9 @@ Key files:
 - Algorithm configuration + training parameters
   [`anymal_d_flat_cfg.py`](scripts/reinforcement_learning/model_based/configs/anymal_d_flat_cfg.py).
 - Pretrained RWM-U checkpoint
-  [`pretrain_rnn_ens.pt`](assets/models/pretrain_rnn_ens.pt).
+  [`pretrain_rnn_ens.pt`](assets/models/anymal_d/pretrain_rnn_ens.pt).
 - Initial states for imagination rollout
-  [`state_action_data_0.csv`](assets/data/state_action_data_0.csv).
-
+  [`state_action_data_0.csv`](assets/data/anymal_d/state_action_data_0.csv).
 
 ---
 

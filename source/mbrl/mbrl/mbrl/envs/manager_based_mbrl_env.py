@@ -167,7 +167,7 @@ class ManagerBasedMBRLEnv(ManagerBasedRLEnv): # 基于系统动力学模型的MB
         raise NotImplementedError
 
 
-    def get_imagination_observation(self, state_history, action_history, observation_noise=True):
+    def get_imagination_observation(self, state_history, action_history, observation_noise=None):
         raise NotImplementedError
     
 
