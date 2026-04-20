@@ -205,6 +205,10 @@ def _sanitize_obs_groups(obs, obs_groups):
     available = list(obs.keys())
     if len(available) == 0:
         return {"policy": ["policy"], "critic": ["policy"]}
+    if not hasattr(obs_groups, "get"):
+        policy_groups = ["policy"] if "policy" in obs else [available[0]]
+        critic_groups = ["critic"] if "critic" in obs else policy_groups
+        return {"policy": policy_groups, "critic": critic_groups}
     policy_groups = [key for key in obs_groups.get("policy", []) if key in obs]
     if len(policy_groups) == 0:
         policy_groups = [available[0]]
@@ -239,7 +243,7 @@ def _build_policy(obs, action_dim: int, agent_cfg, device: torch.device) -> Acto
     obs_groups_cfg = getattr(policy_cfg, "obs_groups", None)
     if obs_groups_cfg is None:
         obs_groups_cfg = getattr(agent_cfg, "obs_groups", None)
-    if obs_groups_cfg is None:
+    if obs_groups_cfg is None or not hasattr(obs_groups_cfg, "get"):
         obs_groups_cfg = _default_policy_obs_groups(obs)
     obs_groups = _sanitize_obs_groups(obs, obs_groups_cfg)
     actor_critic = ActorCritic(
