@@ -28,6 +28,8 @@ class ModelTraining:
         system_dynamics_loss_weights=None,
         save_interval=200,
         max_iterations=1000,
+        random_batch_updates=True,
+        max_eval_batches=64,
     ):
         if len(dataset) < 2:
             raise ValueError("Model dataset must contain at least two valid windows for train/eval split.")
@@ -58,8 +60,18 @@ class ModelTraining:
         }
         self.save_interval = save_interval
         self.max_iterations = max_iterations
-        self.train_dataloader = DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True)
-        self.test_dataloader = DataLoader(self.test_dataset, batch_size=batch_size, shuffle=False)
+        self.batch_size = batch_size
+        self.random_batch_updates = random_batch_updates
+        self.max_eval_batches = max_eval_batches
+        if self.random_batch_updates and not hasattr(dataset, "sample_model_batch"):
+            print("[WARN] Dataset has no sample_model_batch(); falling back to full dataloader epochs.")
+            self.random_batch_updates = False
+        if self.random_batch_updates:
+            self.train_indices = torch.as_tensor(self.train_dataset.indices, dtype=torch.long, device=dataset.state_data.device)
+        else:
+            self.train_indices = None
+            self.train_dataloader = DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True)
+        self.test_dataloader = DataLoader(self.test_dataset, batch_size=batch_size, shuffle=True)
         self.current_learning_iteration = 0
 
     @staticmethod
@@ -94,8 +106,12 @@ class ModelTraining:
                 "termination": 0.0,
             }
             last_loss = None
-            num_batches = len(self.train_dataloader)
-            for state, action, extension, contact, termination in self.train_dataloader:
+            num_batches = 1 if self.random_batch_updates else len(self.train_dataloader)
+            if self.random_batch_updates:
+                batch_iter = [self.train_dataset.dataset.sample_model_batch(self.batch_size, self.train_indices)]
+            else:
+                batch_iter = self.train_dataloader
+            for state, action, extension, contact, termination in batch_iter:
                 self.system_dynamics.reset()
                 state = state.to(self.device)
                 action = action.to(self.device)
@@ -188,9 +204,11 @@ class ModelTraining:
             "contact": 0.0,
             "termination": 0.0,
         }
-        num_batches = len(self.test_dataloader)
+        num_batches = 0
         with torch.inference_mode():
-            for state, action, extension, contact, termination in self.test_dataloader:
+            for batch_idx, (state, action, extension, contact, termination) in enumerate(self.test_dataloader):
+                if self.max_eval_batches > 0 and batch_idx >= self.max_eval_batches:
+                    break
                 self.system_dynamics.reset()
                 state = state.to(self.device)
                 action = action.to(self.device)
@@ -200,9 +218,10 @@ class ModelTraining:
                 losses = self.system_dynamics.compute_loss(state, action, extension, contact, termination)
                 for key, value in zip(mean_losses.keys(), losses, strict=True):
                     mean_losses[key] += value.item()
+                num_batches += 1
 
         for key in mean_losses:
-            mean_losses[key] /= num_batches
+            mean_losses[key] /= max(num_batches, 1)
         print(f"[Model Evaluation] Eval state loss: {mean_losses['state']}")
         self.log_dict.update({f"Model/eval_{key}_loss": value for key, value in mean_losses.items()})
 

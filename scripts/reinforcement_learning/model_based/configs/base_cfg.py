@@ -99,6 +99,8 @@ class BaseConfig:
         save_interval: int = 200
         max_iterations: int = 1000
         batch_size: int = 1024
+        random_batch_updates: bool = True
+        max_eval_batches: int = 64
         eval_traj_noise_scale: List[float] = field(default_factory=lambda: [0.1, 0.2, 0.4, 0.5, 0.8])
         system_dynamics_loss_weights: Dict[str, float] = field(default_factory=lambda: {
             "state": 1.0,

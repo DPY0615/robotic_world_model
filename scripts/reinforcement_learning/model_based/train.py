@@ -212,6 +212,23 @@ class ModelBasedExperiment:
                     self.contact_data[traj_id, start:end],
                     self.termination_data[traj_id, start:end],
                 )
+
+            def sample_model_batch(self, batch_size, valid_indices=None):
+                if valid_indices is None:
+                    idx = torch.randint(0, len(self), (batch_size,), device=self.state_data.device)
+                else:
+                    pick = torch.randint(0, len(valid_indices), (batch_size,), device=self.state_data.device)
+                    idx = valid_indices[pick]
+                traj_ids = self.traj_ids_device[idx]
+                start_steps = self.start_steps_device[idx]
+                offsets = start_steps[:, None] + torch.arange(self.window_horizon, device=self.state_data.device)[None, :]
+                return (
+                    self.state_data[traj_ids[:, None], offsets],
+                    self.action_data[traj_ids[:, None], offsets],
+                    self.extension_data[traj_ids[:, None], offsets],
+                    self.contact_data[traj_ids[:, None], offsets],
+                    self.termination_data[traj_ids[:, None], offsets],
+                )
             
             def normalize(self, state_data=None, action_data=None):
                 state_data = (state_data - self.state_data_mean) / self.state_data_std if state_data is not None else None
@@ -291,7 +308,7 @@ class ModelBasedExperiment:
         )
 
 
-    def train_model(self, log_dir, batch_size, eval_traj_noise_scale, system_dynamics_loss_weights, save_interval, max_iterations):
+    def train_model(self, log_dir, batch_size, eval_traj_noise_scale, system_dynamics_loss_weights, save_interval, max_iterations, random_batch_updates=True, max_eval_batches=64):
         print(f"[Train Model] Training model for {max_iterations} iterations.")
         model_training = ModelTraining(
             log_dir,
@@ -307,6 +324,8 @@ class ModelBasedExperiment:
             system_dynamics_loss_weights=system_dynamics_loss_weights,
             save_interval=save_interval,
             max_iterations=max_iterations,
+            random_batch_updates=random_batch_updates,
+            max_eval_batches=max_eval_batches,
         )
         model_training.current_learning_iteration = self.model_learning_iteration
         model_training.train()
