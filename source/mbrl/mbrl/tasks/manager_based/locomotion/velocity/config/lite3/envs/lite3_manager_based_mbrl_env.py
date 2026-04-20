@@ -242,7 +242,6 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         foot_contact = None if parsed_contacts is None else parsed_contacts.get("foot_contact", None)
 
         cmd_norm = torch.norm(self.base_velocity, dim=1)
-        cmd_xy_norm = torch.norm(self.base_velocity[:, :2], dim=1)
 
         lin_vel_error = torch.sum(torch.square(self.base_velocity[:, :2] - base_lin_vel[:, :2]), dim=1)
         ang_vel_error = torch.square(self.base_velocity[:, 2] - base_ang_vel[:, 2])
@@ -283,7 +282,7 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
             stand_still_threshold = self.reward_manager.get_term_cfg("stand_still_without_cmd").params.get(
                 "command_threshold", stand_still_threshold
             )
-        stand_still = torch.sum(torch.abs(joint_pos_error), dim=1) * (cmd_xy_norm < stand_still_threshold)
+        stand_still = torch.sum(torch.abs(joint_pos_error), dim=1) * (cmd_norm < stand_still_threshold)
 
         # Defaults for contact-derived terms
         feet_air_time = torch.zeros(self.num_imagination_envs, device=self.device)
@@ -303,7 +302,7 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
                     "threshold", feet_air_time_threshold
                 )
 
-            feet_air_time = torch.sum((self.last_air_time - feet_air_time_threshold) * is_first_contact, dim=1) * (
+            feet_air_time = torch.sum((self.current_air_time - feet_air_time_threshold) * is_first_contact, dim=1) * (
                 cmd_norm > 0.1
             )
             feet_contact_without_cmd = torch.sum(is_first_contact.float(), dim=1) * (cmd_norm < 0.5)
@@ -372,9 +371,10 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
             mirror_pairs = self._joint_mirror_pairs_cache
             if mirror_pairs is not None and len(mirror_pairs) > 0:
                 joint_mirror_acc = torch.zeros(self.num_imagination_envs, device=self.device)
+                joint_pos_abs = joint_pos + self.default_joint_pos.unsqueeze(0)
                 for left_ids, right_ids in mirror_pairs:
-                    left_joint_pos = joint_pos[:, left_ids]
-                    right_joint_pos = joint_pos[:, right_ids]
+                    left_joint_pos = joint_pos_abs[:, left_ids]
+                    right_joint_pos = joint_pos_abs[:, right_ids]
                     joint_mirror_acc += torch.sum(torch.square(left_joint_pos - right_joint_pos), dim=1)
                 joint_mirror = joint_mirror_acc / len(mirror_pairs)
                 joint_mirror *= torch.clamp(-projected_gravity[:, 2], 0.0, 0.7) / 0.7

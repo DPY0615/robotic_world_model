@@ -25,6 +25,7 @@ class Lite3FlatEnv(BaseEnv):
         # Semantic mappings aligned with Lite3 online reward setup.
         self._feet_gait_pairs = ((0, 3), (1, 2))
         self._joint_mirror_pairs = (((0, 1, 2), (9, 10, 11)), ((3, 4, 5), (6, 7, 8)))
+        self._default_joint_pos = torch.tensor([0.0, -0.8, 1.6] * 4, dtype=torch.float32, device=self.device)
         # Soft joint-position limits in joint_pos_rel space (URDF limits + soft factor 0.99, minus default pose).
         lower_single = [-0.51777, -1.85508, -1.06466]
         upper_single = [0.51777, 1.09908, 1.18066]
@@ -191,7 +192,6 @@ class Lite3FlatEnv(BaseEnv):
         foot_contact = None if parsed_contacts is None else parsed_contacts.get("foot_contact", None)
 
         cmd_norm = torch.norm(self.base_velocity, dim=1)
-        cmd_xy_norm = torch.norm(self.base_velocity[:, :2], dim=1)
 
         lin_vel_error = torch.sum(torch.square(self.base_velocity[:, :2] - base_lin_vel[:, :2]), dim=1)
         ang_vel_error = torch.square(self.base_velocity[:, 2] - base_ang_vel[:, 2])
@@ -213,7 +213,8 @@ class Lite3FlatEnv(BaseEnv):
         hipx_ids = [0, 3, 6, 9]
         joint_deviation_l1 = torch.sum(torch.abs(joint_pos[:, hipx_ids]), dim=1)
         stand_still_threshold = self.reward_term_params.get("stand_still", {}).get("command_threshold", 0.1)
-        stand_still = torch.sum(torch.abs(joint_pos), dim=1) * (cmd_xy_norm < stand_still_threshold)
+        stand_still = torch.sum(torch.abs(joint_pos), dim=1) * (cmd_norm < stand_still_threshold)
+        joint_pos_abs = joint_pos + self._default_joint_pos.unsqueeze(0)
 
         feet_air_time = torch.zeros(self.num_envs, device=self.device)
         feet_air_time_variance = torch.zeros(self.num_envs, device=self.device)
@@ -227,7 +228,7 @@ class Lite3FlatEnv(BaseEnv):
             is_first_detached = (self.current_contact_time > 0.0) & (~is_contact)
 
             feet_air_time_threshold = self.reward_term_params.get("feet_air_time", {}).get("threshold", 0.5)
-            feet_air_time = torch.sum((self.last_air_time - feet_air_time_threshold) * is_first_contact, dim=1) * (
+            feet_air_time = torch.sum((self.current_air_time - feet_air_time_threshold) * is_first_contact, dim=1) * (
                 cmd_norm > 0.1
             )
             feet_contact_without_cmd = torch.sum(is_first_contact.float(), dim=1) * (cmd_norm < 0.5)
@@ -281,8 +282,8 @@ class Lite3FlatEnv(BaseEnv):
 
         joint_mirror_acc = torch.zeros(self.num_envs, device=self.device)
         for left_ids, right_ids in self._joint_mirror_pairs:
-            left_joint_pos = joint_pos[:, list(left_ids)]
-            right_joint_pos = joint_pos[:, list(right_ids)]
+            left_joint_pos = joint_pos_abs[:, list(left_ids)]
+            right_joint_pos = joint_pos_abs[:, list(right_ids)]
             joint_mirror_acc += torch.sum(torch.square(left_joint_pos - right_joint_pos), dim=1)
         joint_mirror = joint_mirror_acc / len(self._joint_mirror_pairs)
         joint_mirror *= torch.clamp(-projected_gravity[:, 2], 0.0, 0.7) / 0.7

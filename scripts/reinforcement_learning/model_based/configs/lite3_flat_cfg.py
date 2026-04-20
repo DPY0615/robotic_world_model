@@ -3,6 +3,9 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 
 
+ONLINE_TRACKING_STD = 0.5 ** 0.5
+
+
 @dataclass
 class Lite3FlatConfig(BaseConfig):
     experiment_name: str = "offline"
@@ -15,42 +18,42 @@ class Lite3FlatConfig(BaseConfig):
     class EnvironmentConfig(BaseConfig.EnvironmentConfig):
         reward_term_weights: Dict[str, float] = field(
             default_factory=lambda: {
-                # Contact-light profile for the current Lite3 world model: the FL/FR contact heads
-                # are much weaker than AnymalD, so keep contact-derived shaping small by default.
-                "action_rate_l2": -0.055,
+                # Match the online Lite3 reward weights for terms represented in the world-model state.
+                # Terms that need unavailable signals stay disabled below.
+                "action_rate_l2": -0.02,
                 "base_height_l2": 0.0,
-                "feet_air_time": 0.4,
-                "feet_air_time_variance": -0.3,
+                "feet_air_time": 5.0,
+                "feet_air_time_variance": -8.0,
                 "feet_slide": 0.0,
-                "stand_still": 0.0,
+                "stand_still": -0.5,
                 "feet_height_body": 0.0,
                 "feet_height": 0.0,
                 "contact_forces": 0.0,
-                "lin_vel_z_l2": -3.4,
-                "ang_vel_xy_l2": -0.15,
-                "track_lin_vel_xy_exp": 2.1,
-                "track_ang_vel_z_exp": 1.0,
+                "lin_vel_z_l2": -2.0,
+                "ang_vel_xy_l2": -0.05,
+                "track_lin_vel_xy_exp": 3.0,
+                "track_ang_vel_z_exp": 1.5,
                 "undesired_contacts": -0.5,
                 "joint_torques_l2": -2.5e-5,
                 "joint_acc_l2": -1.0e-8,
-                "joint_deviation_l1": -0.07,
+                "joint_deviation_l1": -0.5,
                 "joint_power": -2.0e-5,
-                "flat_orientation_l2": -8.8,
-                "feet_gait": 0.0,
-                "joint_mirror": -0.02,
+                "flat_orientation_l2": -5.0,
+                "feet_gait": 0.5,
+                "joint_mirror": -0.05,
                 "joint_pos_limits": -5.0,
-                "feet_contact_without_cmd": 0.0,
+                "feet_contact_without_cmd": 0.1,
             }
         )
         reward_term_params: Dict[str, Dict[str, object]] = field(
             default_factory=lambda: {
-                "track_lin_vel_xy_exp": {"std": 1.05},
-                "track_ang_vel_z_exp": {"std": 1.05},
-                "feet_air_time": {"threshold": 0.28},
-                "stand_still": {"command_threshold": 0.02},
+                "track_lin_vel_xy_exp": {"std": ONLINE_TRACKING_STD},
+                "track_ang_vel_z_exp": {"std": ONLINE_TRACKING_STD},
+                "feet_air_time": {"threshold": 0.5},
+                "stand_still": {"command_threshold": 0.1},
             }
         )
-        uncertainty_penalty_weight: float = -1.0
+        uncertainty_penalty_weight: float = -0.0
         observation_noise: bool = False
         command_resample_interval_range: List[int] | None = field(default_factory=lambda: [100, 120])
         event_interval_range: List[int] | None = None
@@ -198,10 +201,10 @@ LITE3_OFFLINE_PRESETS: Dict[str, Dict[str, object]] = {
     "wm_safe": {
         "reward_term_weights": {},
         "reward_term_params": {
-            "track_lin_vel_xy_exp": {"std": 1.05},
-            "track_ang_vel_z_exp": {"std": 1.05},
-            "feet_air_time": {"threshold": 0.28},
-            "stand_still": {"command_threshold": 0.02},
+            "track_lin_vel_xy_exp": {"std": ONLINE_TRACKING_STD},
+            "track_ang_vel_z_exp": {"std": ONLINE_TRACKING_STD},
+            "feet_air_time": {"threshold": 0.5},
+            "stand_still": {"command_threshold": 0.1},
         },
         "uncertainty_penalty_weight": -1.0,
     },
@@ -235,17 +238,21 @@ LITE3_OFFLINE_PRESETS: Dict[str, Dict[str, object]] = {
     },
     "ftbest_track": {
         "reward_term_weights": {
-            "action_rate_l2": -0.020,
-            "feet_air_time": 0.8,
-            "feet_air_time_variance": -1.2,
-            "stand_still": -0.1,
+            # World-model-safe tracking profile: keep the fixed online-equivalent
+            # formulas/stds, but avoid contact-heavy shaping dominating noisy
+            # imagination rollouts.
+            "action_rate_l2": -0.015,
+            "feet_air_time": 0.25,
+            "feet_air_time_variance": -0.25,
+            "stand_still": -0.05,
             "track_lin_vel_xy_exp": 3.4,
-            "track_ang_vel_z_exp": 1.9,
-            "feet_gait": 0.35,
-            "joint_mirror": -0.03,
-            "feet_contact_without_cmd": 0.05,
+            "track_ang_vel_z_exp": 1.6,
+            "feet_gait": 0.0,
+            "joint_deviation_l1": -0.08,
+            "joint_mirror": -0.015,
+            "feet_contact_without_cmd": 0.0,
         },
-        "uncertainty_penalty_weight": -0.5,
+        "uncertainty_penalty_weight": -0.2,
     },
     "ftbest_stable": {
         "reward_term_weights": {
