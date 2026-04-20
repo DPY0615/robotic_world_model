@@ -12,6 +12,7 @@ LOG_DIR="logs/offline/launch_logs"
 mkdir -p "$LOG_DIR"
 
 TASKS=(
+  "lite3_flat_wm_safe"
   "lite3_flat_ftbest_ref"
   "lite3_flat_ftbest_ref_u03"
   "lite3_flat_ftbest_track"
@@ -52,4 +53,4 @@ done
 
 wait
 
-echo "[DONE] all 9 offline runs finished (500 iterations each)."
+echo "[DONE] all ${#TASKS[@]} offline runs finished (500 iterations each)."

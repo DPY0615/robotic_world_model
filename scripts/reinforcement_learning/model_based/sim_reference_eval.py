@@ -51,6 +51,7 @@ import mbrl.tasks  # noqa: F401
 
 def resolve_offline_config(task: str):
 	lite3_preset_tasks = {
+		"lite3_flat_wm_safe": "wm_safe",
 		"lite3_flat_ftbest_ref": "ftbest_ref",
 		"lite3_flat_ftbest_ref_u03": "ftbest_ref_u03",
 		"lite3_flat_ftbest_track": "ftbest_track",

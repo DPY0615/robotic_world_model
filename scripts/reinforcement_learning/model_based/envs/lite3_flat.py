@@ -196,9 +196,8 @@ class Lite3FlatEnv(BaseEnv):
         lin_vel_error = torch.sum(torch.square(self.base_velocity[:, :2] - base_lin_vel[:, :2]), dim=1)
         ang_vel_error = torch.square(self.base_velocity[:, 2] - base_ang_vel[:, 2])
 
-        # Keep formula form aligned with Lite3 finetune imagination reward defaults.
-        track_lin_vel_xy_std = 0.71
-        track_ang_vel_z_std = 0.71
+        track_lin_vel_xy_std = self.reward_term_params.get("track_lin_vel_xy_exp", {}).get("std", 0.71)
+        track_ang_vel_z_std = self.reward_term_params.get("track_ang_vel_z_exp", {}).get("std", 0.71)
         track_lin_vel_xy_exp = torch.exp(-lin_vel_error / track_lin_vel_xy_std**2)
         track_ang_vel_z_exp = torch.exp(-ang_vel_error / track_ang_vel_z_std**2)
         lin_vel_z_l2 = torch.square(base_lin_vel[:, 2])
@@ -213,7 +212,7 @@ class Lite3FlatEnv(BaseEnv):
 
         hipx_ids = [0, 3, 6, 9]
         joint_deviation_l1 = torch.sum(torch.abs(joint_pos[:, hipx_ids]), dim=1)
-        stand_still_threshold = 0.1
+        stand_still_threshold = self.reward_term_params.get("stand_still", {}).get("command_threshold", 0.1)
         stand_still = torch.sum(torch.abs(joint_pos), dim=1) * (cmd_xy_norm < stand_still_threshold)
 
         feet_air_time = torch.zeros(self.num_envs, device=self.device)
@@ -227,7 +226,7 @@ class Lite3FlatEnv(BaseEnv):
             is_first_contact = (self.current_air_time > 0.0) & is_contact
             is_first_detached = (self.current_contact_time > 0.0) & (~is_contact)
 
-            feet_air_time_threshold = 0.5
+            feet_air_time_threshold = self.reward_term_params.get("feet_air_time", {}).get("threshold", 0.5)
             feet_air_time = torch.sum((self.last_air_time - feet_air_time_threshold) * is_first_contact, dim=1) * (
                 cmd_norm > 0.1
             )

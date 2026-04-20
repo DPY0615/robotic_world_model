@@ -6,6 +6,7 @@ from configs import (
     make_lite3_flat_config,
 )
 from envs import BaseEnv, AnymalDFlatEnv, Lite3FlatEnv
+from model_training import ModelTraining
 from policy_training import PolicyTraining
 from rsl_rl.modules import ActorCritic, SystemDynamicsEnsemble
 from rsl_rl.algorithms import PPO
@@ -20,7 +21,7 @@ from torch.utils.data import Dataset
 import argparse
 from datetime import datetime
 import time
-import pandas as pd
+import numpy as np
 import wandb
 
 
@@ -52,21 +53,29 @@ class ModelBasedExperiment:
         while True:
             try:
                 file = f"state_action_data_{self.data_file_idx}.csv"
-                data = pd.read_csv(os.path.join(dataset_root, dataset_folder, file), header=None)
+                data = np.loadtxt(os.path.join(dataset_root, dataset_folder, file), delimiter=",", dtype=np.float32)
             except FileNotFoundError:
+                if batch_total_num_data > 0:
+                    print(f"[Motion Loader] No more files after {file}. Using {batch_total_num_data} rows.")
+                    break
                 print(f"[Motion Loader] No data found in {os.path.join(dataset_root, dataset_folder, file)}. Waiting for new data.")
                 time.sleep(1)
                 continue
+            if data.ndim == 1:
+                data = data[None, :]
             if len(data) < file_data_size:
+                if batch_total_num_data > 0:
+                    print(f"[Motion Loader] Incomplete file {file}. Using {batch_total_num_data} rows already loaded.")
+                    break
                 print(f"[Motion Loader] Not enough data in {os.path.join(dataset_root, dataset_folder, file)}. Waiting for new data.")
                 time.sleep(1)
                 continue
             else:
-                state_data = torch.tensor(data.iloc[:, :self.state_dim].values, dtype=torch.float32, device=self.device).unsqueeze(0)
-                action_data = torch.tensor(data.iloc[:, self.state_dim:self.state_dim + self.action_dim].values, dtype=torch.float32, device=self.device).unsqueeze(0)
-                extension_data = torch.tensor(data.iloc[:, self.state_dim + self.action_dim:self.state_dim + self.action_dim + self.extension_dim].values, dtype=torch.float32, device=self.device).unsqueeze(0)
-                contact_data = torch.tensor(data.iloc[:, self.state_dim + self.action_dim + self.extension_dim:self.state_dim + self.action_dim + self.extension_dim + self.contact_dim].values, dtype=torch.float32, device=self.device).unsqueeze(0)
-                termination_data = torch.tensor(data.iloc[:, self.state_dim + self.action_dim + self.extension_dim + self.contact_dim:].values, dtype=torch.float32, device=self.device).unsqueeze(0)
+                state_data = torch.as_tensor(data[:, :self.state_dim], dtype=torch.float32, device=self.device).unsqueeze(0)
+                action_data = torch.as_tensor(data[:, self.state_dim:self.state_dim + self.action_dim], dtype=torch.float32, device=self.device).unsqueeze(0)
+                extension_data = torch.as_tensor(data[:, self.state_dim + self.action_dim:self.state_dim + self.action_dim + self.extension_dim], dtype=torch.float32, device=self.device).unsqueeze(0)
+                contact_data = torch.as_tensor(data[:, self.state_dim + self.action_dim + self.extension_dim:self.state_dim + self.action_dim + self.extension_dim + self.contact_dim], dtype=torch.float32, device=self.device).unsqueeze(0)
+                termination_data = torch.as_tensor(data[:, self.state_dim + self.action_dim + self.extension_dim + self.contact_dim:], dtype=torch.float32, device=self.device).unsqueeze(0)
                 batch_state_data.append(state_data)
                 batch_action_data.append(action_data)
                 batch_extension_data.append(extension_data)
@@ -79,11 +88,11 @@ class ModelBasedExperiment:
                 self.data_file_idx += 1
             if batch_total_num_data >= batch_data_size:
                 break
-        batch_state_data = torch.cat(batch_state_data, dim=1)
-        batch_action_data = torch.cat(batch_action_data, dim=1)
-        batch_extension_data = torch.cat(batch_extension_data, dim=1)
-        batch_contact_data = torch.cat(batch_contact_data, dim=1)
-        batch_termination_data = torch.cat(batch_termination_data, dim=1)
+        batch_state_data = torch.cat(batch_state_data, dim=0)
+        batch_action_data = torch.cat(batch_action_data, dim=0)
+        batch_extension_data = torch.cat(batch_extension_data, dim=0)
+        batch_contact_data = torch.cat(batch_contact_data, dim=0)
+        batch_termination_data = torch.cat(batch_termination_data, dim=0)
         action_dim, extension_dim, contact_dim, termination_dim = action_data.shape[-1], extension_data.shape[-1], contact_data.shape[-1], termination_data.shape[-1]
         print(f"[Motion Loader] State dim: {state_dim} | Action dim: {action_dim} | Extension dim: {extension_dim} | Contact dim: {contact_dim} | Termination dim: {termination_dim}")
         return batch_state_data, batch_action_data, batch_extension_data, batch_contact_data, batch_termination_data
@@ -111,8 +120,8 @@ class ModelBasedExperiment:
         }
 
 
-    def prepare_environment(self, num_envs, max_episode_length, step_dt, reward_term_weights, uncertainty_penalty_weight, observation_noise, command_resample_interval_range, event_interval_range):
-        self.env: BaseEnv = self.env_cls(num_envs, max_episode_length, step_dt, reward_term_weights, self.device, uncertainty_penalty_weight, observation_noise, command_resample_interval_range, event_interval_range)
+    def prepare_environment(self, num_envs, max_episode_length, step_dt, reward_term_weights, reward_term_params, uncertainty_penalty_weight, observation_noise, command_resample_interval_range, event_interval_range):
+        self.env: BaseEnv = self.env_cls(num_envs, max_episode_length, step_dt, reward_term_weights, reward_term_params, self.device, uncertainty_penalty_weight, observation_noise, command_resample_interval_range, event_interval_range)
 
 
     def prepare_data(self, dataset_root, dataset_folder, file_data_size, batch_data_size, state_data_mean=None, state_data_std=None, action_data_mean=None, action_data_std=None, init_data_ratio=0.0, num_eval_trajectories=100, num_visualizations=2, len_eval_trajectory=400, state_idx_dict=None):
@@ -135,36 +144,74 @@ class ModelBasedExperiment:
                 ):
                 self.history_horizon = history_horizon
                 self.forecast_horizon = forecast_horizon
+                self.window_horizon = history_horizon + forecast_horizon
                 
                 self.state_data_mean = torch.tensor(state_data_mean, device=state_data.device) if state_data_mean is not None else state_data.mean(dim=(0, 1))
                 self.state_data_std = torch.tensor(state_data_std, device=state_data.device) if state_data_std is not None else state_data.std(dim=(0, 1)) + 1e-6
                 self.action_data_mean = torch.tensor(action_data_mean, device=action_data.device) if action_data_mean is not None else action_data.mean(dim=(0, 1))
                 self.action_data_std = torch.tensor(action_data_std, device=action_data.device) if action_data_std is not None else action_data.std(dim=(0, 1)) + 1e-6
-                state_data, action_data = self.normalize(state_data, action_data)
-                
-                reset_indices = termination_data.flatten().nonzero(as_tuple=False).squeeze(-1)
+                self.state_data, self.action_data = self.normalize(state_data, action_data)
+                self.extension_data = extension_data
+                self.contact_data = contact_data
+                self.termination_data = termination_data
+
+                termination_mask = termination_data[..., 0] > 0.5
+                num_terminations = int(termination_mask.sum().item())
                 if wandb.run is not None:
                     wandb.log(
                         {
-                            "Data/num_terminations": len(reset_indices),
+                            "Data/num_terminations": num_terminations,
                             }
                     )
-                valid_indices = []
-                for i in range(state_data.shape[1] - history_horizon - forecast_horizon + 1):
-                    if not any(reset_indices[(reset_indices >= i) & (reset_indices < i + history_horizon + forecast_horizon - 1)]):
-                        valid_indices.append(i)
-                # (num_groups, history_horizon + forecast_horizon, dim)
-                self.state_data = torch.cat([state_data[:, i:i + history_horizon + forecast_horizon, :] for i in valid_indices], dim=0)
-                self.action_data = torch.cat([action_data[:, i:i + history_horizon + forecast_horizon, :] for i in valid_indices], dim=0)
-                self.extension_data = torch.cat([extension_data[:, i:i + history_horizon + forecast_horizon, :] for i in valid_indices], dim=0)
-                self.contact_data = torch.cat([contact_data[:, i:i + history_horizon + forecast_horizon, :] for i in valid_indices], dim=0)
-                self.termination_data = torch.cat([termination_data[:, i:i + history_horizon + forecast_horizon, :] for i in valid_indices], dim=0)
+                self.traj_ids, self.start_steps = self._build_valid_window_index(termination_mask)
+                self.traj_ids_device = self.traj_ids.to(state_data.device)
+                self.start_steps_device = self.start_steps.to(state_data.device)
+                print(
+                    "[Motion Loader] Valid model windows: "
+                    f"{len(self.traj_ids)} from {state_data.shape[0]} trajectories."
+                )
+
+            def _build_valid_window_index(self, termination_mask):
+                traj_ids = []
+                start_steps = []
+                num_trajs, num_steps = termination_mask.shape
+                num_starts = num_steps - self.window_horizon + 1
+                if num_starts <= 0:
+                    raise ValueError(
+                        "Dataset is shorter than history_horizon + forecast_horizon "
+                        f"({self.window_horizon})."
+                    )
+
+                for traj_id in range(num_trajs):
+                    terminal = termination_mask[traj_id]
+                    prefix = torch.zeros(num_steps + 1, dtype=torch.int64, device=terminal.device)
+                    prefix[1:] = torch.cumsum(terminal.to(torch.int64), dim=0)
+                    starts = torch.arange(num_starts, device=terminal.device)
+                    # Allow a terminal flag on the final target row, but never inside the conditioning window.
+                    terminal_count = prefix[starts + self.window_horizon - 1] - prefix[starts]
+                    valid = starts[terminal_count == 0].detach().cpu()
+                    if valid.numel() > 0:
+                        traj_ids.append(torch.full((valid.numel(),), traj_id, dtype=torch.long))
+                        start_steps.append(valid.to(torch.long))
+
+                if len(traj_ids) == 0:
+                    raise ValueError("No valid model windows remain after filtering termination crossings.")
+                return torch.cat(traj_ids, dim=0), torch.cat(start_steps, dim=0)
 
             def __len__(self):
-                return len(self.state_data)
+                return len(self.traj_ids)
 
             def __getitem__(self, idx):
-                return self.state_data[idx], self.action_data[idx], self.extension_data[idx], self.contact_data[idx], self.termination_data[idx]
+                traj_id = int(self.traj_ids[idx])
+                start = int(self.start_steps[idx])
+                end = start + self.window_horizon
+                return (
+                    self.state_data[traj_id, start:end],
+                    self.action_data[traj_id, start:end],
+                    self.extension_data[traj_id, start:end],
+                    self.contact_data[traj_id, start:end],
+                    self.termination_data[traj_id, start:end],
+                )
             
             def normalize(self, state_data=None, action_data=None):
                 state_data = (state_data - self.state_data_mean) / self.state_data_std if state_data is not None else None
@@ -177,11 +224,15 @@ class ModelBasedExperiment:
                 return state_data, action_data
             
             def sample_batch(self, batch_size, normalized=True):
-                idx = torch.randint(0, len(self.state_data), (batch_size,))
+                idx = torch.randint(0, len(self), (batch_size,), device=self.state_data.device)
+                traj_ids = self.traj_ids_device[idx]
+                start_steps = self.start_steps_device[idx]
+                offsets = start_steps[:, None] + torch.arange(self.history_horizon, device=self.state_data.device)[None, :]
                 if normalized:
-                    return self.state_data[idx, :self.history_horizon], self.action_data[idx, :self.history_horizon]
-                else:
-                    return self.denormalize(self.state_data[idx, :self.history_horizon], self.action_data[idx, :self.history_horizon])
+                    return self.state_data[traj_ids[:, None], offsets], self.action_data[traj_ids[:, None], offsets]
+                state_sample = self.state_data[traj_ids[:, None], offsets]
+                action_sample = self.action_data[traj_ids[:, None], offsets]
+                return self.denormalize(state_sample, action_sample)
             
         self.dataset = SystemDynamicsDataset(
             self.history_horizon,
@@ -230,6 +281,36 @@ class ModelBasedExperiment:
             self.model_learning_iteration = loaded_dict["iter"]
         # init env system dynamics
         self.env.set_system_dynamics(self.system_dynamics)
+
+
+    def prepare_model_optimizer(self, learning_rate, weight_decay):
+        self.model_optimizer = torch.optim.Adam(
+            self.system_dynamics.parameters(),
+            lr=learning_rate,
+            weight_decay=weight_decay,
+        )
+
+
+    def train_model(self, log_dir, batch_size, eval_traj_noise_scale, system_dynamics_loss_weights, save_interval, max_iterations):
+        print(f"[Train Model] Training model for {max_iterations} iterations.")
+        model_training = ModelTraining(
+            log_dir,
+            self.history_horizon,
+            self.forecast_horizon,
+            self.dataset,
+            self.system_dynamics,
+            device=self.device,
+            optimizer=self.model_optimizer,
+            eval_traj_config=self.eval_traj_config,
+            batch_size=batch_size,
+            eval_traj_noise_scale=eval_traj_noise_scale,
+            system_dynamics_loss_weights=system_dynamics_loss_weights,
+            save_interval=save_interval,
+            max_iterations=max_iterations,
+        )
+        model_training.current_learning_iteration = self.model_learning_iteration
+        model_training.train()
+        self.model_learning_iteration += model_training.max_iterations
             
 
     def prepare_policy(self, observation_dim, obs_groups, action_dim, actor_hidden_dims, critic_hidden_dims, activation, init_noise_std, noise_std_type="scalar", resume_path=None):
@@ -298,14 +379,20 @@ def run_experiment(config: BaseConfig):
     model_experiment = ModelBasedExperiment(**config.experiment_config.to_dict())
     model_experiment.prepare_environment(**config.environment_config.to_dict())
     model_experiment.prepare_model(**config.model_architecture_config.to_dict())
-    model_experiment.prepare_policy(**config.policy_architecture_config.to_dict())
-    model_experiment.prepare_algorithm(**config.policy_algorithm_config.to_dict())
     model_experiment.prepare_data(**config.data_config.to_dict())
-    model_experiment.train_policy(log_dir, **config.policy_training_config.to_dict())
+
+    if args_cli.mode in ("model", "both"):
+        model_experiment.prepare_model_optimizer(**config.model_optimizer_config.to_dict())
+        model_experiment.train_model(log_dir, **config.model_training_config.to_dict())
+
+    if args_cli.mode in ("policy", "both"):
+        model_experiment.prepare_policy(**config.policy_architecture_config.to_dict())
+        model_experiment.prepare_algorithm(**config.policy_algorithm_config.to_dict())
+        model_experiment.train_policy(log_dir, **config.policy_training_config.to_dict())
 
     # Run simulator reference evaluation after offline training if enabled.
     sim_cfg = getattr(config, "sim_reference_config", None)
-    if sim_cfg is not None and getattr(sim_cfg, "enabled", False):
+    if args_cli.mode in ("policy", "both") and sim_cfg is not None and getattr(sim_cfg, "enabled", False):
         policy_ckpts = glob.glob(os.path.join(log_dir, "policy_*.pt"))
         if len(policy_ckpts) == 0:
             print("[SimRef] No policy checkpoint found. Skip sim reference eval.")
@@ -375,7 +462,7 @@ def run_experiment(config: BaseConfig):
                             "SimRef/num_finished_episodes": sim_metrics.get("num_finished_episodes", 0),
                         }
                     )
-    print(f"Training completed. Policy saved to {log_dir}.")
+    print(f"Training completed. Artifacts saved to {log_dir}.")
 
 
 def run(config: BaseConfig):
@@ -391,6 +478,7 @@ def resolve_task_config(task: str):
         config = Lite3FlatConfig()
         return config
     lite3_preset_tasks = {
+        "lite3_flat_wm_safe": "wm_safe",
         "lite3_flat_ftbest_ref": "ftbest_ref",
         "lite3_flat_ftbest_ref_u03": "ftbest_ref_u03",
         "lite3_flat_ftbest_track": "ftbest_track",
@@ -408,6 +496,7 @@ def resolve_task_config(task: str):
         return config
     else:
         valid = ["anymal_d_flat", "lite3_flat"] + [
+            "lite3_flat_wm_safe",
             "lite3_flat_ftbest_ref",
             "lite3_flat_ftbest_ref_u03",
             "lite3_flat_ftbest_track",
@@ -430,10 +519,60 @@ if __name__ == "__main__":
     parser.add_argument("--task", type=str, default="anymal_d_flat", help="Task to use for the experiment.")
     parser.add_argument("--run_num", type=int, default=None, help="Run number for the experiment on the cluster.")
     parser.add_argument(
+        "--mode",
+        type=str,
+        default="policy",
+        choices=("policy", "model", "both"),
+        help="Train only the offline policy, only the world model, or train the world model then policy.",
+    )
+    parser.add_argument("--device", type=str, default=None, help="Optional override for experiment_config.device.")
+    parser.add_argument(
         "--max_iterations_override",
         type=int,
         default=None,
         help="Optional override for policy_training_config.max_iterations.",
+    )
+    parser.add_argument(
+        "--model_max_iterations_override",
+        type=int,
+        default=None,
+        help="Optional override for model_training_config.max_iterations.",
+    )
+    parser.add_argument(
+        "--model_save_interval_override",
+        type=int,
+        default=None,
+        help="Optional override for model_training_config.save_interval.",
+    )
+    parser.add_argument(
+        "--model_resume_path",
+        type=str,
+        default=None,
+        help="Optional model checkpoint path override. Use 'none' to train the world model from scratch.",
+    )
+    parser.add_argument(
+        "--dataset_root_override",
+        type=str,
+        default=None,
+        help="Optional override for data_config.dataset_root.",
+    )
+    parser.add_argument(
+        "--dataset_folder_override",
+        type=str,
+        default=None,
+        help="Optional override for data_config.dataset_folder.",
+    )
+    parser.add_argument(
+        "--batch_data_size_override",
+        type=int,
+        default=None,
+        help="Optional override for data_config.batch_data_size.",
+    )
+    parser.add_argument(
+        "--file_data_size_override",
+        type=int,
+        default=None,
+        help="Optional override for data_config.file_data_size.",
     )
     parser.add_argument(
         "--sim_ref_steps_override",
@@ -449,6 +588,22 @@ if __name__ == "__main__":
     )
     args_cli = parser.parse_args()
     config = resolve_task_config(args_cli.task)
+    if args_cli.device is not None:
+        config.experiment_config.device = args_cli.device
     if args_cli.max_iterations_override is not None:
         config.policy_training_config.max_iterations = args_cli.max_iterations_override
+    if args_cli.model_max_iterations_override is not None:
+        config.model_training_config.max_iterations = args_cli.model_max_iterations_override
+    if args_cli.model_save_interval_override is not None:
+        config.model_training_config.save_interval = args_cli.model_save_interval_override
+    if args_cli.model_resume_path is not None:
+        config.model_architecture_config.resume_path = None if args_cli.model_resume_path.lower() == "none" else args_cli.model_resume_path
+    if args_cli.dataset_root_override is not None:
+        config.data_config.dataset_root = args_cli.dataset_root_override
+    if args_cli.dataset_folder_override is not None:
+        config.data_config.dataset_folder = args_cli.dataset_folder_override
+    if args_cli.batch_data_size_override is not None:
+        config.data_config.batch_data_size = args_cli.batch_data_size_override
+    if args_cli.file_data_size_override is not None:
+        config.data_config.file_data_size = args_cli.file_data_size_override
     run(config)

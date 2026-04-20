@@ -9,6 +9,7 @@ class BaseEnv:
         max_episode_length: int,
         step_dt: float,
         reward_term_weights: dict,
+        reward_term_params: dict | None,
         device: str,
         uncertainty_penalty_weight:float = -0.0,
         observation_noise: bool = False,
@@ -21,6 +22,7 @@ class BaseEnv:
         self.device = device
 
         self.reward_term_weights = reward_term_weights
+        self.reward_term_params = reward_term_params or {}
         self.uncertainty_penalty_weight = uncertainty_penalty_weight
         self.observation_noise = observation_noise
         self.command_resample_interval_range = command_resample_interval_range

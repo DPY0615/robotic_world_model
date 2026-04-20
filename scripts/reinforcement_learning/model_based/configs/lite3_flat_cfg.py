@@ -15,30 +15,39 @@ class Lite3FlatConfig(BaseConfig):
     class EnvironmentConfig(BaseConfig.EnvironmentConfig):
         reward_term_weights: Dict[str, float] = field(
             default_factory=lambda: {
-                "action_rate_l2": -0.02,
-                # Keep aligned with current Finetune-v0, where these terms are disabled.
+                # Contact-light profile for the current Lite3 world model: the FL/FR contact heads
+                # are much weaker than AnymalD, so keep contact-derived shaping small by default.
+                "action_rate_l2": -0.055,
                 "base_height_l2": 0.0,
-                "feet_air_time": 5.0,
-                "feet_air_time_variance": -8.0,
+                "feet_air_time": 0.4,
+                "feet_air_time_variance": -0.3,
                 "feet_slide": 0.0,
-                "stand_still": -0.5,
+                "stand_still": 0.0,
                 "feet_height_body": 0.0,
                 "feet_height": 0.0,
                 "contact_forces": 0.0,
-                "lin_vel_z_l2": -2.0,
-                "ang_vel_xy_l2": -0.05,
-                "track_lin_vel_xy_exp": 3.0,
-                "track_ang_vel_z_exp": 1.5,
+                "lin_vel_z_l2": -3.4,
+                "ang_vel_xy_l2": -0.15,
+                "track_lin_vel_xy_exp": 2.1,
+                "track_ang_vel_z_exp": 1.0,
                 "undesired_contacts": -0.5,
                 "joint_torques_l2": -2.5e-5,
                 "joint_acc_l2": -1.0e-8,
-                "joint_deviation_l1": -0.5,
+                "joint_deviation_l1": -0.07,
                 "joint_power": -2.0e-5,
-                "flat_orientation_l2": -5.0,
-                "feet_gait": 0.5,
-                "joint_mirror": -0.05,
+                "flat_orientation_l2": -8.8,
+                "feet_gait": 0.0,
+                "joint_mirror": -0.02,
                 "joint_pos_limits": -5.0,
-                "feet_contact_without_cmd": 0.1,
+                "feet_contact_without_cmd": 0.0,
+            }
+        )
+        reward_term_params: Dict[str, Dict[str, object]] = field(
+            default_factory=lambda: {
+                "track_lin_vel_xy_exp": {"std": 1.05},
+                "track_ang_vel_z_exp": {"std": 1.05},
+                "feet_air_time": {"threshold": 0.28},
+                "stand_still": {"command_threshold": 0.02},
             }
         )
         uncertainty_penalty_weight: float = -1.0
@@ -50,7 +59,7 @@ class Lite3FlatConfig(BaseConfig):
     class DataConfig(BaseConfig.DataConfig):
         dataset_root: str = "assets/data"
         dataset_folder: str = "lite3"
-        batch_data_size: int = 10000
+        batch_data_size: int = 500000
         state_idx_dict: Dict[str, List[int]] = field(
             default_factory=lambda: {
                 r"$v$\n$[m/s]$": [0, 1, 2],
@@ -129,6 +138,18 @@ class Lite3FlatConfig(BaseConfig):
             }
         )
         resume_path: str | None = "assets/models/lite3/pretrain_rnn_ens.pt"
+
+    @dataclass
+    class ModelOptimizerConfig(BaseConfig.ModelOptimizerConfig):
+        learning_rate: float = 1.0e-4
+        weight_decay: float = 1.0e-5
+
+    @dataclass
+    class ModelTrainingConfig(BaseConfig.ModelTrainingConfig):
+        # Lite3 needs longer retraining once the dataset is regenerated from
+        # policy rollouts; the old 10k random-action file underfits contacts.
+        max_iterations: int = 2500
+        save_interval: int = 100
         
     @dataclass
     class PolicyArchitectureConfig(BaseConfig.PolicyArchitectureConfig):
@@ -163,6 +184,8 @@ class Lite3FlatConfig(BaseConfig):
     environment_config: EnvironmentConfig = field(default_factory=EnvironmentConfig)
     data_config: DataConfig = field(default_factory=DataConfig)
     model_architecture_config: ModelArchitectureConfig = field(default_factory=ModelArchitectureConfig)
+    model_optimizer_config: ModelOptimizerConfig = field(default_factory=ModelOptimizerConfig)
+    model_training_config: ModelTrainingConfig = field(default_factory=ModelTrainingConfig)
     policy_architecture_config: PolicyArchitectureConfig = field(default_factory=PolicyArchitectureConfig)
     policy_algorithm_config: PolicyAlgorithmConfig = field(default_factory=PolicyAlgorithmConfig)
     policy_training_config: PolicyTrainingConfig = field(default_factory=PolicyTrainingConfig)
@@ -172,6 +195,16 @@ class Lite3FlatConfig(BaseConfig):
 # Presets around finetune run:
 # logs/rsl_rl/deeprobotics_lite3_flat/2026-04-18_16-19-52_s2_term_balance_20260418_161940
 LITE3_OFFLINE_PRESETS: Dict[str, Dict[str, object]] = {
+    "wm_safe": {
+        "reward_term_weights": {},
+        "reward_term_params": {
+            "track_lin_vel_xy_exp": {"std": 1.05},
+            "track_ang_vel_z_exp": {"std": 1.05},
+            "feet_air_time": {"threshold": 0.28},
+            "stand_still": {"command_threshold": 0.02},
+        },
+        "uncertainty_penalty_weight": -1.0,
+    },
     "ftbest_ref": {
         "reward_term_weights": {
             "action_rate_l2": -0.022,
@@ -326,6 +359,8 @@ def make_lite3_flat_config(preset: str | None = None) -> Lite3FlatConfig:
         raise ValueError(f"Unknown Lite3 offline preset: {preset}. Valid presets: {valid}")
 
     preset_cfg = LITE3_OFFLINE_PRESETS[preset]
-    config.environment_config.reward_term_weights.update(preset_cfg["reward_term_weights"])
+    config.environment_config.reward_term_weights.update(preset_cfg.get("reward_term_weights", {}))
+    for term, params in preset_cfg.get("reward_term_params", {}).items():
+        config.environment_config.reward_term_params.setdefault(term, {}).update(params)
     config.environment_config.uncertainty_penalty_weight = float(preset_cfg["uncertainty_penalty_weight"])
     return config
