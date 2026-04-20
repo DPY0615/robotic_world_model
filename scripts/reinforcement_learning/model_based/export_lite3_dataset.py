@@ -214,6 +214,17 @@ def _sanitize_obs_groups(obs, obs_groups):
     return {"policy": policy_groups, "critic": critic_groups}
 
 
+def _default_policy_obs_groups(obs):
+    if not isinstance(obs, dict):
+        return {"policy": ["policy"], "critic": ["policy"]}
+    available = list(obs.keys())
+    if len(available) == 0:
+        return {"policy": ["policy"], "critic": ["policy"]}
+    policy_group = ["policy"] if "policy" in obs else [available[0]]
+    critic_group = ["critic"] if "critic" in obs else policy_group
+    return {"policy": policy_group, "critic": critic_group}
+
+
 def _sample_actions(num_envs: int, action_dim: int, device: torch.device, source: str) -> torch.Tensor:
     if source == "zero":
         return torch.zeros((num_envs, action_dim), device=device)
@@ -225,7 +236,12 @@ def _build_policy(obs, action_dim: int, agent_cfg, device: torch.device) -> Acto
         raise ValueError("`--action_source policy` requires `--policy_checkpoint`.")
 
     policy_cfg = agent_cfg.policy
-    obs_groups = _sanitize_obs_groups(obs, policy_cfg.obs_groups)
+    obs_groups_cfg = getattr(policy_cfg, "obs_groups", None)
+    if obs_groups_cfg is None:
+        obs_groups_cfg = getattr(agent_cfg, "obs_groups", None)
+    if obs_groups_cfg is None:
+        obs_groups_cfg = _default_policy_obs_groups(obs)
+    obs_groups = _sanitize_obs_groups(obs, obs_groups_cfg)
     actor_critic = ActorCritic(
         obs=obs,
         obs_groups=obs_groups,
@@ -238,7 +254,32 @@ def _build_policy(obs, action_dim: int, agent_cfg, device: torch.device) -> Acto
     ).to(device)
 
     checkpoint = torch.load(args_cli.policy_checkpoint, map_location=device)
-    actor_critic.load_state_dict(checkpoint["model_state_dict"], strict=True)
+    checkpoint_state = checkpoint.get("model_state_dict", checkpoint.get("policy_state_dict", checkpoint))
+    try:
+        actor_critic.load_state_dict(checkpoint_state, strict=True)
+    except RuntimeError as exc:
+        current_state = actor_critic.state_dict()
+        compatible_state = {
+            key: value
+            for key, value in checkpoint_state.items()
+            if key in current_state and current_state[key].shape == value.shape
+        }
+        missing_actor_keys = [
+            key
+            for key in current_state
+            if (key.startswith("actor.") or key in ("std", "log_std")) and key not in compatible_state
+        ]
+        if missing_actor_keys:
+            raise RuntimeError(
+                "Policy checkpoint actor weights are incompatible with the exporter observation/action setup. "
+                f"Missing compatible actor keys: {missing_actor_keys}"
+            ) from exc
+        actor_critic.load_state_dict(compatible_state, strict=False)
+        skipped_keys = sorted(set(checkpoint_state) - set(compatible_state))
+        print(
+            "[WARN] Loaded policy checkpoint with non-strict compatible weights. "
+            f"Skipped {len(skipped_keys)} incompatible/nonexistent keys, mostly critic-only weights."
+        )
     actor_critic.eval()
     print(
         f"[INFO] Loaded policy checkpoint {args_cli.policy_checkpoint} "
