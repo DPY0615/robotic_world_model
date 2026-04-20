@@ -533,6 +533,55 @@ def resolve_task_config(task: str):
             f"Available Lite3 presets: {valid_presets}"
         )
 
+def _parse_int_list(value: str) -> list[int]:
+    try:
+        parsed = [int(item.strip()) for item in value.split(",") if item.strip()]
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"Expected comma-separated integers, got {value!r}."
+        ) from exc
+    if len(parsed) == 0:
+        raise argparse.ArgumentTypeError("Expected at least one integer.")
+    return parsed
+
+
+def apply_paper_aligned_overrides(config: BaseConfig):
+    """Match the offline RWM-U paper's main model/policy training scale."""
+    # Offline data / imagination reset pool.
+    config.data_config.batch_data_size = 6_000_000
+    config.data_config.init_data_ratio = 1.0
+
+    # World model training setup from the paper.
+    config.model_architecture_config.history_horizon = 32
+    config.model_architecture_config.forecast_horizon = 8
+    config.model_architecture_config.ensemble_size = 5
+    config.model_optimizer_config.learning_rate = 1.0e-4
+    config.model_optimizer_config.weight_decay = 1.0e-5
+    config.model_training_config.batch_size = 1024
+    config.model_training_config.max_iterations = 2500
+    config.model_training_config.random_batch_updates = True
+
+    # Offline MOPO-PPO setup.
+    config.environment_config.num_envs = 4096
+    config.environment_config.uncertainty_penalty_weight = -1.0
+    config.policy_architecture_config.actor_hidden_dims = [128, 128, 128]
+    config.policy_architecture_config.critic_hidden_dims = [128, 128, 128]
+    config.policy_algorithm_config.learning_rate = 1.0e-3
+    config.policy_algorithm_config.entropy_coef = 0.005
+    config.policy_algorithm_config.num_learning_epochs = 5
+    config.policy_algorithm_config.num_mini_batches = 4
+    config.policy_algorithm_config.clip_param = 0.2
+    config.policy_algorithm_config.gamma = 0.99
+    config.policy_algorithm_config.lam = 0.95
+    config.policy_algorithm_config.value_loss_coef = 1.0
+    config.policy_algorithm_config.max_grad_norm = 1.0
+    config.policy_algorithm_config.use_clipped_value_loss = True
+    config.policy_algorithm_config.schedule = "adaptive"
+    config.policy_training_config.num_steps_per_env = 100
+    config.policy_training_config.max_iterations = 2500
+    config.policy_training_config.save_interval = 100
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Online learning training.")
     parser.add_argument("--task", type=str, default="anymal_d_flat", help="Task to use for the experiment.")
@@ -545,6 +594,14 @@ if __name__ == "__main__":
         help="Train only the offline policy, only the world model, or train the world model then policy.",
     )
     parser.add_argument("--device", type=str, default=None, help="Optional override for experiment_config.device.")
+    parser.add_argument(
+        "--paper_aligned_overrides",
+        action="store_true",
+        help=(
+            "Use paper-aligned offline settings: 6M data/init pool, 4096 imagination envs, "
+            "100 steps/env, 2500 policy iters, PPO lr 1e-3, entropy 0.005, and 128x3 MLPs."
+        ),
+    )
     parser.add_argument(
         "--max_iterations_override",
         type=int,
@@ -594,6 +651,54 @@ if __name__ == "__main__":
         help="Optional override for data_config.file_data_size.",
     )
     parser.add_argument(
+        "--init_data_ratio_override",
+        type=float,
+        default=None,
+        help="Optional override for data_config.init_data_ratio.",
+    )
+    parser.add_argument(
+        "--policy_num_envs_override",
+        type=int,
+        default=None,
+        help="Optional override for environment_config.num_envs used by offline policy imagination.",
+    )
+    parser.add_argument(
+        "--policy_steps_per_env_override",
+        type=int,
+        default=None,
+        help="Optional override for policy_training_config.num_steps_per_env.",
+    )
+    parser.add_argument(
+        "--policy_learning_rate_override",
+        type=float,
+        default=None,
+        help="Optional override for policy_algorithm_config.learning_rate.",
+    )
+    parser.add_argument(
+        "--policy_entropy_coef_override",
+        type=float,
+        default=None,
+        help="Optional override for policy_algorithm_config.entropy_coef.",
+    )
+    parser.add_argument(
+        "--policy_actor_hidden_dims_override",
+        type=_parse_int_list,
+        default=None,
+        help="Optional comma-separated actor hidden dims, e.g. 128,128,128.",
+    )
+    parser.add_argument(
+        "--policy_critic_hidden_dims_override",
+        type=_parse_int_list,
+        default=None,
+        help="Optional comma-separated critic hidden dims, e.g. 128,128,128.",
+    )
+    parser.add_argument(
+        "--uncertainty_penalty_weight_override",
+        type=float,
+        default=None,
+        help="Optional override for environment_config.uncertainty_penalty_weight.",
+    )
+    parser.add_argument(
         "--sim_ref_steps_override",
         type=int,
         default=None,
@@ -607,6 +712,8 @@ if __name__ == "__main__":
     )
     args_cli = parser.parse_args()
     config = resolve_task_config(args_cli.task)
+    if args_cli.paper_aligned_overrides:
+        apply_paper_aligned_overrides(config)
     if args_cli.device is not None:
         config.experiment_config.device = args_cli.device
     if args_cli.max_iterations_override is not None:
@@ -625,4 +732,20 @@ if __name__ == "__main__":
         config.data_config.batch_data_size = args_cli.batch_data_size_override
     if args_cli.file_data_size_override is not None:
         config.data_config.file_data_size = args_cli.file_data_size_override
+    if args_cli.init_data_ratio_override is not None:
+        config.data_config.init_data_ratio = args_cli.init_data_ratio_override
+    if args_cli.policy_num_envs_override is not None:
+        config.environment_config.num_envs = args_cli.policy_num_envs_override
+    if args_cli.policy_steps_per_env_override is not None:
+        config.policy_training_config.num_steps_per_env = args_cli.policy_steps_per_env_override
+    if args_cli.policy_learning_rate_override is not None:
+        config.policy_algorithm_config.learning_rate = args_cli.policy_learning_rate_override
+    if args_cli.policy_entropy_coef_override is not None:
+        config.policy_algorithm_config.entropy_coef = args_cli.policy_entropy_coef_override
+    if args_cli.policy_actor_hidden_dims_override is not None:
+        config.policy_architecture_config.actor_hidden_dims = args_cli.policy_actor_hidden_dims_override
+    if args_cli.policy_critic_hidden_dims_override is not None:
+        config.policy_architecture_config.critic_hidden_dims = args_cli.policy_critic_hidden_dims_override
+    if args_cli.uncertainty_penalty_weight_override is not None:
+        config.environment_config.uncertainty_penalty_weight = args_cli.uncertainty_penalty_weight_override
     run(config)
