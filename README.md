@@ -131,7 +131,32 @@ python scripts/reinforcement_learning/rsl_rl/train.py \
   --headless
 ```
 
-2. Standalone world model training/export (online data collection, offline-aligned checkpoint export, currently Lite3):
+
+### Export offline dataset (Lite3)
+
+Before offline policy training, export simulator rollouts to
+`assets/data/lite3/state_action_data_*.csv` with:
+
+```bash
+python scripts/reinforcement_learning/model_based/export_lite3_dataset.py \
+  --task Template-Isaac-Velocity-Flat-Lite3-Pretrain-v0 \
+  --headless \
+  --num_envs 128 \
+  --steps_per_file 10000 \
+  --num_files 1 \
+  --output_dir assets/data/lite3 \
+  --action_source random
+```
+
+If you want policy-guided data, set `--action_source policy` and pass
+`--policy_checkpoint`.
+
+### World model training (Lite3)
+
+The world-model optimization core lives in
+`scripts/reinforcement_learning/model_based/model_training.py`.
+
+The CLI entry point for world-model training/export is:
 
 ```bash
 python scripts/reinforcement_learning/rsl_rl/train_world_model.py \
@@ -143,8 +168,35 @@ python scripts/reinforcement_learning/rsl_rl/train_world_model.py \
   --run_name world_model_online
 ```
 
-Standalone checkpoints are exported to
+This exports standalone world-model checkpoints to
 `logs/rsl_rl/deeprobotics_lite3_flat/<run>/world_model_only/`.
+
+### Model eval (offline world-model quality)
+
+Use the offline evaluator to measure one-step and autoregressive prediction
+error on exported CSV data:
+
+```bash
+# ANYmal D
+python scripts/reinforcement_learning/model_based/eval_world_model.py \
+  --task anymal_d_flat \
+  --data assets/data/anymal_d/state_action_data_0.csv \
+  --checkpoint assets/models/anymal_d/pretrain_rnn_ens.pt \
+  --device cuda:0 \
+  --batch_size 256 \
+  --num_windows 2048
+
+# Lite3
+python scripts/reinforcement_learning/model_based/eval_world_model.py \
+  --task lite3_flat \
+  --data assets/data/lite3/state_action_data_0.csv \
+  --checkpoint assets/models/lite3/pretrain_rnn_ens.pt \
+  --device cuda:0 \
+  --batch_size 256 \
+  --num_windows 2048
+```
+
+Optionally add `--output_json <path>` to save metrics.
 
 ### Visualize autoregressive predictions
 
