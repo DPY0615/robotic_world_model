@@ -77,7 +77,17 @@ python -m pip install -e source/mbrl
 5. **Verify the installation** (not needed for offline policy training)
 
 ```bash
-python scripts/reinforcement_learning/rsl_rl/train.py --task Template-Isaac-Velocity-Flat-Anymal-D-Init-v0 --headless
+# ANYmal D
+python scripts/reinforcement_learning/rsl_rl/train.py \
+  --task Template-Isaac-Velocity-Flat-Anymal-D-Init-v0 \
+  --headless \
+  --max_iterations 1
+
+# Lite3
+python scripts/reinforcement_learning/rsl_rl/train.py \
+  --task Template-Isaac-Velocity-Flat-Lite3-Init-v0 \
+  --headless \
+  --max_iterations 1
 ```
 
 ---
@@ -88,7 +98,7 @@ Robotic World Model is a model-based reinforcement learning algorithm that learn
 
 ### Configure model inputs/outputs
 
-You can configure the model inputs and outputs under `ObservationsCfg_PRETRAIN` in [`AnymalDFlatEnvCfg_PRETRAIN`](source/mbrl/mbrl/tasks/manager_based/locomotion/velocity/config/anymal_d/flat_env_cfg.py).
+You can configure the model inputs and outputs under `ObservationsCfg_PRETRAIN` in [`DeeproboticsLite3FlatEnvCfg_PRETRAIN`](source/mbrl/mbrl/tasks/manager_based/locomotion/velocity/config/lite3/flat_env_cfg.py).
 
 Available components:
 - `SystemStateCfg`: state input and output head
@@ -97,7 +107,7 @@ Available components:
 - `SystemContactCfg`: binary privileged output head (e.g. contacts)
 - `SystemTerminationCfg`: binary privileged output head (e.g. terminations)
 
-And you can configure the model architecture and training hyperparameters under `RslRlSystemDynamicsCfg` and `RslRlMbrlPpoAlgorithmCfg` in [`AnymalDFlatPPOPretrainRunnerCfg`](source/mbrl/mbrl/tasks/manager_based/locomotion/velocity/config/anymal_d/agents/rsl_rl_ppo_cfg.py) .
+And you can configure the model architecture and training hyperparameters under `RslRlSystemDynamicsCfg` and `RslRlMbrlPpoAlgorithmCfg` in [`DeeproboticsLite3FlatPPOPretrainRunnerCfg`](source/mbrl/mbrl/tasks/manager_based/locomotion/velocity/config/lite3/agents/rsl_rl_ppo_cfg.py) .
 
 Available options:
 - `ensemble_size`: ensemble size for uncertainty estimation
@@ -105,21 +115,49 @@ Available options:
 - `architecture_config`: architecture configuration
 - `system_dynamics_forecast_horizon`: autoregressive prediction steps
 
-### Run dynamics model pretraining:
+### Run dynamics model pretraining
+
+1. Joint policy + world model pretraining with MBPO runner:
 
 ```bash
+# ANYmal D
 python scripts/reinforcement_learning/rsl_rl/train.py \
   --task Template-Isaac-Velocity-Flat-Anymal-D-Pretrain-v0 \
   --headless
+
+# Lite3
+python scripts/reinforcement_learning/rsl_rl/train.py \
+  --task Template-Isaac-Velocity-Flat-Lite3-Pretrain-v0 \
+  --headless
 ```
 
-It trains a PPO policy from scratch, while the induced experience during training is used to train the dynamics model.
+2. Standalone world model training/export (online data collection, offline-aligned checkpoint export, currently Lite3):
+
+```bash
+python scripts/reinforcement_learning/rsl_rl/train_world_model.py \
+  --task Template-Isaac-Velocity-Flat-Lite3-Pretrain-v0 \
+  --headless \
+  --num_envs 100 \
+  --max_iterations 2500 \
+  --save_interval 200 \
+  --run_name world_model_online
+```
+
+Standalone checkpoints are exported to
+`logs/rsl_rl/deeprobotics_lite3_flat/<run>/world_model_only/`.
 
 ### Visualize autoregressive predictions
 
 ```bash
+# ANYmal D
 python scripts/reinforcement_learning/rsl_rl/visualize.py \
   --task Template-Isaac-Velocity-Flat-Anymal-D-Visualize-v0 \
+  --checkpoint <checkpoint_path> \
+  --system_dynamics_load_path <dynamics_model_path>
+
+# Lite3
+python scripts/reinforcement_learning/rsl_rl/visualize.py \
+  --task Template-Isaac-Velocity-Flat-Lite3-Visualize-v0 \
   --checkpoint <checkpoint_path> \
   --system_dynamics_load_path <dynamics_model_path>
 ```
@@ -142,7 +180,19 @@ There are two options:
 The online data collection relies on interactions with the environment and thus brings up the simulator.
 
 ```bash
-python scripts/reinforcement_learning/rsl_rl/train.py --task Template-Isaac-Velocity-Flat-Anymal-D-Finetune-v0 --headless --checkpoint <checkpoint_path> --system_dynamics_load_path <dynamics_model_path>
+# ANYmal D
+python scripts/reinforcement_learning/rsl_rl/train.py \
+  --task Template-Isaac-Velocity-Flat-Anymal-D-Finetune-v0 \
+  --headless \
+  --checkpoint <checkpoint_path> \
+  --system_dynamics_load_path <dynamics_model_path>
+
+# Lite3
+python scripts/reinforcement_learning/rsl_rl/train.py \
+  --task Template-Isaac-Velocity-Flat-Lite3-Finetune-v0 \
+  --headless \
+  --checkpoint <checkpoint_path> \
+  --system_dynamics_load_path <dynamics_model_path>
 ```
 
 You can either start the policy from pretrained checkpoints or from scratch by simply omitting the `--checkpoint` argument.
@@ -150,27 +200,37 @@ You can either start the policy from pretrained checkpoints or from scratch by s
 ### Option 2: Train policy in imagination *offline*
 
 The offline policy training does not request any new data and thus relies solely on the static dynamics model.
-Align the model architecture and specify the model load path under `ModelArchitectureConfig` in [`AnymalDFlatConfig`](scripts/reinforcement_learning/model_based/configs/anymal_d_flat_cfg.py).
+Align the model architecture and specify the model load path under `ModelArchitectureConfig` in [`Lite3FlatConfig`](scripts/reinforcement_learning/model_based/configs/lite3_flat_cfg.py).
 
-Additionally, the offline imagination needs to branch off from some initial states. Specify the data path under `DataConfig` in [`AnymalDFlatConfig`](scripts/reinforcement_learning/model_based/configs/anymal_d_flat_cfg.py).
+Additionally, the offline imagination needs to branch off from some initial states. Specify the data path under `DataConfig` in [`Lite3FlatConfig`](scripts/reinforcement_learning/model_based/configs/lite3_flat_cfg.py).
 
 ```bash
-python scripts/reinforcement_learning/model_based/train.py --task anymal_d_flat
+# ANYmal D
+python scripts/reinforcement_learning/model_based/train.py --task anymal_d_flat --run_num 9001
+
+# Lite3
+python scripts/reinforcement_learning/model_based/train.py --task lite3_flat --run_num 9001
 ```
+
+Available offline tasks in this script are `lite3_flat` and `anymal_d_flat`.
 
 ### Play the learned model-based policy
 
 You can play the learned policies with the original Isaac Lab task registry.
 
 ```bash
+# ANYmal D
 python scripts/reinforcement_learning/rsl_rl/play.py --task Isaac-Velocity-Flat-Anymal-D-Play-v0 --checkpoint <checkpoint_path>
+
+# Lite3
+python scripts/reinforcement_learning/rsl_rl/play.py --task Isaac-Velocity-Flat-Lite3-Play-v0 --checkpoint <checkpoint_path>
 ```
 
 ---
 
 ## Code Structure
 
-We provide a reference pipeline that enables RWM and RWM-U on ANYmal D.
+We provide reference pipelines that enable RWM and RWM-U on both ANYmal D and Lite3.
 
 Key files:
 
