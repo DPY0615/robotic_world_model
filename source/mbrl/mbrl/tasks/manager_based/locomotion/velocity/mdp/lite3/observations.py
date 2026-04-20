@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
 
 
-def joint_pos_rel_without_wheel( # 轮腿机器人关节位置相对于默认位置的偏移（不包括轮子关节）；每一步调用
+def joint_pos_rel_without_wheel(
     env: ManagerBasedEnv,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     wheel_asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
@@ -29,9 +29,9 @@ def joint_pos_rel_without_wheel( # 轮腿机器人关节位置相对于默认位
     return joint_pos_rel
 
 
-def phase(env: ManagerBasedRLEnv, cycle_time: float) -> torch.Tensor: # 机器人运动周期的相位；每一步调用
-    if not hasattr(env, "episode_length_buf") or env.episode_length_buf is None: # 如果环境对象没有episode_length_buf属性，或者该属性为None，则创建一个新的episode_length_buf属性，并将其初始化为一个全零的张量，大小为环境中的环境数量，数据类型为长整型，设备与环境相同。
+def phase(env: ManagerBasedRLEnv, cycle_time: float) -> torch.Tensor:
+    if not hasattr(env, "episode_length_buf") or env.episode_length_buf is None:
         env.episode_length_buf = torch.zeros(env.num_envs, device=env.device, dtype=torch.long)
-    phase = env.episode_length_buf[:, None] * env.step_dt / cycle_time # 计算相位，等于每个环境的episode长度乘以时间步长，再除以周期时间
-    phase_tensor = torch.cat([torch.sin(2 * torch.pi * phase), torch.cos(2 * torch.pi * phase)], dim=-1) # 将相位转换为一个二维张量，第一列是相位的正弦值，第二列是相位的余弦值
+    phase = env.episode_length_buf[:, None] * env.step_dt / cycle_time
+    phase_tensor = torch.cat([torch.sin(2 * torch.pi * phase), torch.cos(2 * torch.pi * phase)], dim=-1)
     return phase_tensor

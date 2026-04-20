@@ -44,15 +44,13 @@ class AnymalDFlatConfig(BaseConfig):
             r"$\dot{q}$\n$[rad/s]$": [21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32],
             r"$\tau$\n$[Nm]$": [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44],
         })
-        state_data_mean: List[float] = field(default_factory=lambda: [ # 状态数据均值列表，顺序与state_idx_dict中物理量的索引顺序一致，用于状态数据归一化
-            0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0,
+        state_data_mean: List[float] = field(default_factory=lambda: [ 
             0.0, 0.0, -1.0,
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
             -2.0, -2.0, 2.0, 2.0, -6.0, 8.0, -6.0, 8.0, 12.0, -12.0, 12.0, -12.0,
         ])
-        state_data_std: List[float] = field(default_factory=lambda: [ # 状态数据标准差列表，顺序与state_idx_dict中物理量的索引顺序一致，用于状态数据归一化
+        state_data_std: List[float] = field(default_factory=lambda: [ 
             0.5, 0.5, 0.1,
             0.3, 0.3, 0.5,
             0.02, 0.02, 0.04,

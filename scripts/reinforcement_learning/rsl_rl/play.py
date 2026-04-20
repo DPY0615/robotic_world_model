@@ -79,7 +79,7 @@ import mbrl.tasks  # noqa: F401
 
 
 @hydra_task_config(args_cli.task, "rsl_rl_cfg_entry_point") 
-def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg): # 加载训练好的checkpoint并在Isaac Sim中运行RSL-RL agent进行测试
+def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
     """Play with RSL-RL agent."""
     task_name = args_cli.task.split(":")[-1]
     # override configurations with non-hydra CLI arguments

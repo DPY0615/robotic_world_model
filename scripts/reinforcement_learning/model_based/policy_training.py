@@ -11,10 +11,10 @@ from collections import deque
 import wandb
 
 
-class PolicyTraining: # 策略训练器类: 负责初始化PPO的rollout storage,执行训练循环,收集数据,更新策略,记录checkpoint，切换训练和评估模式等功能。
+class PolicyTraining:
     def __init__(
         self,
-        log_dir,  # 日志目录: 用于保存训练日志和模型checkpoint的路径。
+        log_dir,
         env: BaseEnv,
         alg: PPO,
         device,
@@ -26,12 +26,12 @@ class PolicyTraining: # 策略训练器类: 负责初始化PPO的rollout storage
         self.env = env
         self.alg = alg
         self.device = device
-        self.alg.init_storage( # 初始化PPO的rollout storage: 根据环境的观测空间和动作空间维度,以及每个环境的步数,创建一个用于存储rollout数据的对象。
+        self.alg.init_storage(
             "rl",
             env.num_envs,
             num_steps_per_env,
-            env.dummy_obs, # observation space的占位符: 用于确定rollout storage中每个环境的观测空间维度。
-            [env.action_dim], # action space的维度: 用于确定rollout storage中每个环境的动作空间维度。
+            env.dummy_obs,
+            [env.action_dim],
         )
 
         self.num_steps_per_env = num_steps_per_env 
@@ -44,53 +44,53 @@ class PolicyTraining: # 策略训练器类: 负责初始化PPO的rollout storage
         self.tot_time = 0
         self.current_learning_iteration = 0
 
-    def learn(self): # 执行训练循环: 包括数据收集、策略更新、日志记录和模型保存等步骤。
+    def learn(self):
         state_history, action_history = self.env.prepare_imagination()
-        self.train_mode() # 切换到训练模式
+        self.train_mode()
 
-        ep_infos = [] # 收集环境返回的 episode/log 信息
-        rewbuffer = deque(maxlen=100) # deque:双端队列，存储最近100个episode的reward
-        lenbuffer = deque(maxlen=100) # deque:双端队列，存储最近100个episode的长度
-        cur_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device) # 当前环境的累计奖励
-        cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device) # 当前环境的累计步数
+        ep_infos = []
+        rewbuffer = deque(maxlen=100)
+        lenbuffer = deque(maxlen=100)
+        cur_reward_sum = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
+        cur_episode_length = torch.zeros(self.env.num_envs, dtype=torch.float, device=self.device)
         
         start_iter = self.current_learning_iteration
-        tot_iter = start_iter + self.max_iterations # 计算迭代起始点与终点
-        for it in range(start_iter, tot_iter): # 训练迭代循环
+        tot_iter = start_iter + self.max_iterations
+        for it in range(start_iter, tot_iter):
             start = time.time()
             self.log_dict = {}
-            epistemic_uncertainty = torch.zeros(self.num_steps_per_env, device=self.device) # 记录当前迭代的认知不确定性
+            epistemic_uncertainty = torch.zeros(self.num_steps_per_env, device=self.device)
             with torch.inference_mode():
-                for i in range(self.num_steps_per_env): # 在每个环境中执行 num_steps_per_env 步的想象过程
-                    if self.env.system_dynamics.architecture_config["type"] in ["rnn", "rssm"] and self.env.common_step_counter > 0: # 如果环境的系统动力学模型是RNN或RSSM类型，并且已经执行过至少一步的环境交互，则更新状态和动作历史以仅保留最近的一步。
+                for i in range(self.num_steps_per_env):
+                    if self.env.system_dynamics.architecture_config["type"] in ["rnn", "rssm"] and self.env.common_step_counter > 0:
                         state_history = state_history[:, -1:]
                         action_history = action_history[:, -1:]
                     imagination_obs = self.env.get_imagination_observation(state_history, action_history) 
-                    imagination_actions = self.alg.act(imagination_obs) # 使用当前策略根据想象的观测生成动作
-                    imagination_obs, imagination_rewards, imagination_dones, imagination_extras, state_history, action_history, uncertainty = self.env.imagination_step(imagination_actions, state_history, action_history) # 在环境中执行想象步骤，获取新的观测、奖励、done标志、额外信息，以及更新后的状态和动作历史，同时返回当前步骤的认知不确定性。
-                    self.alg.process_env_step(imagination_obs, imagination_rewards, imagination_dones, imagination_extras) # 将想象步骤的结果传递给PPO算法进行处理
-                    epistemic_uncertainty[i] = uncertainty.mean(dim=0) # 记录当前步骤的平均认知不确定性
+                    imagination_actions = self.alg.act(imagination_obs)
+                    imagination_obs, imagination_rewards, imagination_dones, imagination_extras, state_history, action_history, uncertainty = self.env.imagination_step(imagination_actions, state_history, action_history)
+                    self.alg.process_env_step(imagination_obs, imagination_rewards, imagination_dones, imagination_extras)
+                    epistemic_uncertainty[i] = uncertainty.mean(dim=0)
                     
-                    if self.log_dir is not None: # 如果日志目录存在，则收集想象步骤的 episode/log 信息
+                    if self.log_dir is not None:
                         if "episode" in imagination_extras:
                             ep_infos.append(imagination_extras["episode"])
                         elif "log" in imagination_extras:
                             ep_infos.append(imagination_extras["log"])
                         cur_reward_sum += imagination_rewards
-                        cur_episode_length += 1 # 累积当前环境的奖励和步数
-                        new_ids = (imagination_dones > 0).nonzero(as_tuple=False) # 找到触发done的环境索引
+                        cur_episode_length += 1
+                        new_ids = (imagination_dones > 0).nonzero(as_tuple=False)
                         rewbuffer.extend(cur_reward_sum[new_ids][:, 0].cpu().numpy().tolist())
-                        lenbuffer.extend(cur_episode_length[new_ids][:, 0].cpu().numpy().tolist()) # 将完成的episode的奖励和长度添加到缓冲区中
+                        lenbuffer.extend(cur_episode_length[new_ids][:, 0].cpu().numpy().tolist())
                         cur_reward_sum[new_ids] = 0
-                        cur_episode_length[new_ids] = 0 # 重置完成的环境的奖励和步数计数器
+                        cur_episode_length[new_ids] = 0
 
                 stop = time.time()
                 collection_time = stop - start
                 start = stop
 
                 # logs
-                num_valid_imagination_envs = self.alg.storage.valid_env_mask.sum() # 计算当前迭代中有效的想象环境数量
-                epistemic_uncertainty = epistemic_uncertainty.mean(dim=0) # 计算当前迭代中所有步骤的平均认知不确定性
+                num_valid_imagination_envs = self.alg.storage.valid_env_mask.sum()
+                epistemic_uncertainty = epistemic_uncertainty.mean(dim=0)
                 
                 self.log_dict.update({
                     "Imagination/epistemic_uncertainty": epistemic_uncertainty,
@@ -98,13 +98,13 @@ class PolicyTraining: # 策略训练器类: 负责初始化PPO的rollout storage
                     })
 
                 imagination_critic_obs = imagination_obs
-                self.alg.compute_returns(imagination_critic_obs) # 计算想象步骤的回报值，为PPO算法的更新做准备
+                self.alg.compute_returns(imagination_critic_obs)
 
             # Update policy
             # Note: we keep arguments here since locals() loads them
-            loss_dict = self.alg.update() # 执行PPO算法的更新步骤，返回一个包含损失信息的字典
+            loss_dict = self.alg.update()
             stop = time.time()
-            learn_time = stop - start # 计算学习步骤的时间
+            learn_time = stop - start
             self.current_learning_iteration = it 
 
             # Logging info and save checkpoint
@@ -116,9 +116,9 @@ class PolicyTraining: # 策略训练器类: 负责初始化PPO的rollout storage
                     self.save(os.path.join(self.log_dir, f"policy_{it}.pt"))
 
             ep_infos.clear()
-        self.save(os.path.join(self.log_dir, f"policy_{it}.pt")) # 在训练结束后保存最终的模型checkpoint
+        self.save(os.path.join(self.log_dir, f"policy_{it}.pt"))
 
-    def log(self, locs: dict, width: int = 80, pad: int = 35): # 记录训练日志: 包括计算性能、奖励信息、损失信息等，并使用wandb进行可视化，同时在终端打印日志信息。
+    def log(self, locs: dict, width: int = 80, pad: int = 35):
         self.tot_timesteps += self.num_steps_per_env * self.env.num_envs
         self.tot_time += locs["collection_time"] + locs["learn_time"]
         iteration_time = locs["collection_time"] + locs["learn_time"]

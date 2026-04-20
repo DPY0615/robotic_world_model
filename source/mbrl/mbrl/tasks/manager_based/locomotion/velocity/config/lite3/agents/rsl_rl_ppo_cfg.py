@@ -191,11 +191,11 @@ class DeeproboticsLite3FlatPPOPretrainRunnerCfg(DeeproboticsLite3FlatPPORunnerCf
 
 @configclass
 class DeeproboticsLite3FlatPPOFinetuneRunnerCfg(DeeproboticsLite3FlatPPOPretrainRunnerCfg):
-    resume = False
-    load_run = ".*pretrain.*"
-    load_checkpoint = "model_.*.pt"
+    resume = True
+    load_run = "2026-03-29_20-58-40_pretrain"
+    load_checkpoint = "model_2000.pt"
     load_system_dynamics = True
-    system_dynamics_load_path = None
+    system_dynamics_load_path = "logs/rsl_rl/deeprobotics_lite3_flat/2026-03-29_20-58-40_pretrain/model_2000.pt"
     system_dynamics_warmup_iterations = 500
     run_name = "finetune"
 
@@ -207,43 +207,44 @@ class DeeproboticsLite3FlatPPOFinetuneRunnerCfg(DeeproboticsLite3FlatPPOPretrain
         self.imagination.max_episode_length = 256
         self.imagination.command_resample_interval_range = [100, 120]
         self.imagination.uncertainty_penalty_weight = -0.0
-
-
-@configclass
-class DeeproboticsLite3FlatPPOFinetuneStableRunnerCfg(DeeproboticsLite3FlatPPOFinetuneRunnerCfg):
-    run_name = "finetune_stable_reward"
-
-
-@configclass
-class DeeproboticsLite3FlatPPOFinetuneConservativeRunnerCfg(DeeproboticsLite3FlatPPOFinetuneRunnerCfg):
-    run_name = "finetune_reward_conservative"
-
-
-@configclass
-class DeeproboticsLite3FlatPPOFinetuneAggressiveRunnerCfg(DeeproboticsLite3FlatPPOFinetuneRunnerCfg):
-    run_name = "finetune_reward_aggressive"
-
-
-@configclass
-class DeeproboticsLite3FlatPPOFinetuneAnymalRefRunnerCfg(DeeproboticsLite3FlatPPOFinetuneRunnerCfg):
-    run_name = "finetune_reward_anymal_ref"
-
-
-@configclass
-class DeeproboticsLite3FlatPPOFinetuneLowShapingRunnerCfg(DeeproboticsLite3FlatPPOFinetuneRunnerCfg):
-    run_name = "finetune_reward_low_shaping"
-
-
-@configclass
-class DeeproboticsLite3FlatPPOFinetuneAnymalRefScratchRunnerCfg(DeeproboticsLite3FlatPPOFinetuneAnymalRefRunnerCfg):
-    resume = False
-    run_name = "finetune_reward_anymal_ref_scratch"
-
-
-@configclass
-class DeeproboticsLite3FlatPPOFinetuneLowShapingScratchRunnerCfg(DeeproboticsLite3FlatPPOFinetuneLowShapingRunnerCfg):
-    resume = False
-    run_name = "finetune_reward_low_shaping_scratch"
+        self.imagination.state_normalizer.mean = [
+            -0.0, 0.0, -0.0,
+            0.0, 0.0, 0.0,
+            -0.0, 0.0, -1.0,
+            0.0, -0.0, 0.0,
+            -0.0, -0.0, 0.0, -0.1, -0.1, 0.3,
+            0.3, 0.2, 0.3,
+            0.0, -0.0, 0.1, -0.1,
+            -0.5, -0.6, -0.7, -0.5,
+            1.1, 1.4, 1.6, 1.4,
+            -0.0, -0.8, 1.1, -0.4, 0.9, 0.4,
+            -1.4, -1.5, -3.8, -5.3, -7.2, -5.6,
+        ]
+        self.imagination.state_normalizer.std = [
+            0.8, 0.4, 0.2,
+            1.0, 0.9, 0.4,
+            0.1, 0.1, 0.1,
+            0.1, 0.1, 0.1,
+            0.1, 0.2, 0.2, 0.2, 0.2, 0.2,
+            0.2, 0.2, 0.2,
+            2.2, 2.3, 2.3, 2.2,
+            4.8, 5.0, 4.6, 4.6,
+            6.3, 6.2, 6.2, 6.2,
+            2.7, 3.1, 3.2, 2.9, 4.7, 4.8,
+            4.5, 4.4, 9.0, 9.3, 9.9, 9.3,
+        ]
+        self.imagination.action_normalizer.mean = [
+            0.0, -0.1, 1.0,
+            -0.3, 0.0, 0.5,
+            0.4, -0.7, 0.2,
+            -0.2, -0.8, 0.5,
+        ]
+        self.imagination.action_normalizer.std = [
+            1.0, 1.0, 1.6,
+            1.2, 1.1, 1.5,
+            1.1, 1.0, 1.5,
+            1.0, 1.0, 1.6,
+        ]
 
 
 @configclass

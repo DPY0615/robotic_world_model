@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Sub-module containing command generators for pose tracking."""
-# 该文件是一个“用于 pose tracking 的命令生成器子模块”
+
 
 from __future__ import annotations
 
@@ -26,14 +26,14 @@ class UniformPoseCommand_Visualize(UniformPoseCommand):
         super().__init__(cfg, env)
         self.env = env
         
-    def _resample_command(self, env_ids: Sequence[int]): # 对指定env_ids进行重采样
+    def _resample_command(self, env_ids: Sequence[int]):
         # intersect the reset envs with only the real envs
         uniques, counts = torch.cat([env_ids, self.env.env_ids_real]).unique(return_counts=True)
-        env_ids = uniques[counts > 1] # 计算传进来的id里只留下那些属于real env的id
-        super()._resample_command(env_ids) # 对real env的id进行重采样
-        self.pose_command_b[env_ids + 1] = self.pose_command_b[env_ids].clone() # 将重采样后的pose_command_b的值复制到pose_command_b[env_ids + 1]中，即将real env的命令复制到imagination env中
+        env_ids = uniques[counts > 1] 
+        super()._resample_command(env_ids) 
+        self.pose_command_b[env_ids + 1] = self.pose_command_b[env_ids].clone() 
 
-    def _set_debug_vis_impl(self, debug_vis: bool): # 控制debug可视化的显示与隐藏
+    def _set_debug_vis_impl(self, debug_vis: bool): 
         super()._set_debug_vis_impl(debug_vis)
         
         if debug_vis:

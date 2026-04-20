@@ -40,28 +40,28 @@ class DeeproboticsLite3RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         super().__post_init__()
 
         # ------------------------------Sence------------------------------
-        self.scene.robot = DEEPROBOTICS_LITE3_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot") # 把robot替换成Lite3的asset配置
+        self.scene.robot = DEEPROBOTICS_LITE3_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name 
         self.scene.height_scanner_base.prim_path = "{ENV_REGEX_NS}/Robot/" + self.base_link_name
         self.scene.height_scanner.pattern_cfg.resolution = 0.07 #  = GridPatternCfg(resolution=0.07, size=[1.6, 1.0]),
 
         # ------------------------------Observations------------------------------
-        self.observations.policy.base_lin_vel = None # type: ignore  # 观测去掉线速度
-        self.observations.policy.height_scan = None # type: ignore   # 观测去掉高度扫描数据
+        self.observations.policy.base_lin_vel = None
+        self.observations.policy.height_scan = None
         self.observations.policy.base_ang_vel.scale = 0.25
         self.observations.policy.joint_pos.scale = 1.0
         self.observations.policy.joint_vel.scale = 0.05
-        self.observations.policy.joint_pos.params["asset_cfg"].joint_names = self.joint_names # 把关节名称替换成Lite3的关节名称列表，决定观测中包含哪些关节的数据
-        self.observations.policy.joint_vel.params["asset_cfg"].joint_names = self.joint_names # 把关节名称替换成Lite3的关节名称列表，决定观测中包含哪些关节的数据
+        self.observations.policy.joint_pos.params["asset_cfg"].joint_names = self.joint_names
+        self.observations.policy.joint_vel.params["asset_cfg"].joint_names = self.joint_names
 
         # ------------------------------Actions------------------------------
         # reduce action scale
-        self.actions.joint_pos.scale = {".*_HipX_joint": 0.125, "^(?!.*_HipX_joint).*": 0.25} # 关节位置动作的缩放，HipX关节动作缩放为0.125，其他关节动作缩放为0.25
-        self.actions.joint_pos.clip = {".*": (-100.0, 100.0)} # 关节位置动作的裁剪范围，所有关节动作裁剪到[-100, 100]
-        self.actions.joint_pos.joint_names = self.joint_names # 把action输出数据的关节名称替换成Lite3的关节名称列表
+        self.actions.joint_pos.scale = {".*_HipX_joint": 0.125, "^(?!.*_HipX_joint).*": 0.25}
+        self.actions.joint_pos.clip = {".*": (-100.0, 100.0)}
+        self.actions.joint_pos.joint_names = self.joint_names
 
         # ------------------------------Events------------------------------
-        self.events.randomize_reset_base.params = { # 重置时随机化机器人初始位置和姿态：每次重置时调用
+        self.events.randomize_reset_base.params = {
             "pose_range": {
                 "x": (-1.0, 1.0),
                 "y": (-1.0, 1.0),
@@ -102,7 +102,7 @@ class DeeproboticsLite3RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
         self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
 
-        # ------------------------------Rewards------------------------------ # reward各项权重设定
+
         self.rewards.action_rate_l2.weight = -0.02 #-0.02
         # self.rewards.smoothness_2.weight = -0.0075
 
@@ -170,14 +170,14 @@ class DeeproboticsLite3RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             self.disable_zero_weight_rewards()
 
         # ------------------------------Terminations------------------------------
-        self.terminations.illegal_contact = None # 关掉非法接触终止
+        self.terminations.illegal_contact = None
         # self.terminations.bad_orientation_2 = None
 
         # ------------------------------Curriculums------------------------------
         # self.curriculum.command_levels.params["range_multiplier"] = (0.2, 1.0)
-        self.curriculum.command_levels = None # 关掉命令课程
+        self.curriculum.command_levels = None
 
-        # ------------------------------Commands------------------------------ # 速度命令范围
+
         self.commands.base_velocity.ranges.lin_vel_x = (-1.5, 1.5)
         self.commands.base_velocity.ranges.lin_vel_y = (-0.8, 0.8)
         self.commands.base_velocity.ranges.ang_vel_z = (-0.8, 0.8)

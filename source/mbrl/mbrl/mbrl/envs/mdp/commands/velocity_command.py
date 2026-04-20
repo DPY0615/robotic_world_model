@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Sub-module containing command generators for the velocity-based locomotion task."""
-# 用于速度控制的命令生成器子模块
+
 from __future__ import annotations
 
 import torch
@@ -29,8 +29,8 @@ class UniformVelocityCommand_Visualize(UniformVelocityCommand):
         # intersect the reset envs with only the real envs
         uniques, counts = torch.cat([env_ids, self.env.env_ids_real]).unique(return_counts=True)
         env_ids = uniques[counts > 1]
-        super()._resample_command(env_ids) # 调用父类重采样方法，只对 real env_ids 进行重采样
-        self.vel_command_b[env_ids + 1] = self.vel_command_b[env_ids].clone() # 把重采样得到的 real env 的命令复制给对应的 imagination env（env_ids + 1）
+        super()._resample_command(env_ids)
+        self.vel_command_b[env_ids + 1] = self.vel_command_b[env_ids].clone()
         # heading target
         if self.cfg.heading_command:
             self.heading_target[env_ids + 1] = self.heading_target[env_ids].clone()
@@ -74,7 +74,7 @@ class UniformVelocityCommand_Visualize(UniformVelocityCommand):
 
 class SampleUniformVelocityCommand(UniformVelocityCommand):
     
-    def sample_command(self, num_envs: int): # 给定命令范围，随机采样一批速度指令
+    def sample_command(self, num_envs: int):
         # sample velocity commands
         r = torch.empty(num_envs, device=self.device)
         vel_command_b = torch.zeros(num_envs, 3, device=self.device)

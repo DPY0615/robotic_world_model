@@ -2,12 +2,12 @@ from dataclasses import dataclass, asdict, field
 from typing import List, Dict
 
 
-@dataclass # 数据类装饰器
+@dataclass 
 class BaseConfig:
-    experiment_name: str = "online" # 实验名，影响wandb的project和日志目录
+    experiment_name: str = "online" 
 
     @dataclass
-    class ExperimentConfig: # 实验配置类
+    class ExperimentConfig: 
         environment: str = "dummy" 
         device: str = "cuda"
         
@@ -57,8 +57,8 @@ class BaseConfig:
         extension_dim: int = 0
         contact_dim: int = 0
         termination_dim: int = 0
-        ensemble_size: int = 1 # 集成模型中子模型的数量
-        architecture_config: Dict[str, object] = field(default_factory=lambda: { # 模型架构配置字典，包含模型类型和各层的维度等信息
+        ensemble_size: int = 1 
+        architecture_config: Dict[str, object] = field(default_factory=lambda: {
             
             "type": "mlp",
             "base_shape": [256, 256],
@@ -149,7 +149,7 @@ class BaseConfig:
             return asdict(self)
 
     @dataclass
-    class PolicyTrainingConfig: # 策略训练配置类
+    class PolicyTrainingConfig: 
         num_steps_per_env: int = 24
         save_interval: int = 200
         max_iterations: int = 500
@@ -160,7 +160,7 @@ class BaseConfig:
 
     def to_dict(self):
         return asdict(self)
-    # 下面是各个配置类的实例化，作为BaseConfig的属性
+    
     experiment_config: ExperimentConfig = field(default_factory=ExperimentConfig)
     environment_config: EnvironmentConfig = field(default_factory=EnvironmentConfig)
     data_config: DataConfig = field(default_factory=DataConfig)

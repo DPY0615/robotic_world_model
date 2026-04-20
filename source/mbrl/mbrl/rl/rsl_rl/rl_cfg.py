@@ -12,7 +12,7 @@ from isaaclab.utils import configclass
 
 
 @configclass
-class RslRlSystemDynamicsCfg: # 系统动力学网络配置
+class RslRlSystemDynamicsCfg:
     """Configuration for the system dynamics networks."""
     
     ensemble_size: int = MISSING 
@@ -21,15 +21,15 @@ class RslRlSystemDynamicsCfg: # 系统动力学网络配置
     history_horizon: int = MISSING
     """The prediction horizon of the system dynamics network."""
 
-    architecture_config: dict = MISSING # 系统动力学网络的架构配置，包含模型类型和各层的维度等信息
+    architecture_config: dict = MISSING
     """The architecture configuration of the system dynamics network."""
     
-    freeze_auxiliary: bool = MISSING # 是否冻结系统动力学网络中的辅助网络（如接触力预测网络、终止预测网络等），如果为True，则在训练过程中不更新这些辅助网络的参数。
+    freeze_auxiliary: bool = MISSING
     """Whether to freeze the auxiliary networks."""
 
 
 @configclass
-class RslRlNormalizerCfg: # 归一化器配置
+class RslRlNormalizerCfg:
     """Configuration for the normalizer."""
 
     mean: list[float] = MISSING
@@ -40,7 +40,7 @@ class RslRlNormalizerCfg: # 归一化器配置
 
 
 @configclass
-class RslRlMbrlImaginationCfg: # imagination rollout 配置
+class RslRlMbrlImaginationCfg:
     """Configuration for the imagination."""
     
     num_envs: int = MISSING
@@ -66,7 +66,7 @@ class RslRlMbrlImaginationCfg: # imagination rollout 配置
 
 
 @configclass
-class RslRlMbrlPpoAlgorithmCfg: # RSL-RL算法配置
+class RslRlMbrlPpoAlgorithmCfg:
     """Configuration for the PPO algorithm."""
 
     class_name: str = "MBPOPPO"

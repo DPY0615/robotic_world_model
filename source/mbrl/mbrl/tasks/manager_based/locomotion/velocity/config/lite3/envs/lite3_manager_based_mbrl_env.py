@@ -11,11 +11,11 @@ from tensordict import TensorDict
 
 from mbrl.mbrl.envs import ManagerBasedMBRLEnv
 
-class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based MBRL 环境
+class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv):
     def _init_additional_attributes(self):
-        self.default_joint_pos = self.scene["robot"].data.default_joint_pos[0] # 获取机器人的默认关节位置
-        self.default_joint_vel = self.scene["robot"].data.default_joint_vel[0] # 获取机器人的默认关节速度
-        self.base_velocity = None # 速度命令，在计算奖励时会用到
+        self.default_joint_pos = self.scene["robot"].data.default_joint_pos[0]
+        self.default_joint_vel = self.scene["robot"].data.default_joint_vel[0]
+        self.base_velocity = None
     
     def prepare_imagination(self):
         self.imagination_common_step_counter = 0
@@ -53,14 +53,14 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         self._last_joint_vel_raw[env_ids] = 0.0
 
     def _init_additional_imagination_attributes(self):
-        self.last_air_time = torch.zeros(self.num_imagination_envs, 4, device=self.device) # 最后一次离地时间
-        self.current_air_time = torch.zeros(self.num_imagination_envs, 4, device=self.device) # 当前离地时间
-        self.last_contact_time = torch.zeros(self.num_imagination_envs, 4, device=self.device) # 最后一次接触时间
-        self.current_contact_time = torch.zeros(self.num_imagination_envs, 4, device=self.device) # 当前接触时间
+        self.last_air_time = torch.zeros(self.num_imagination_envs, 4, device=self.device)
+        self.current_air_time = torch.zeros(self.num_imagination_envs, 4, device=self.device)
+        self.last_contact_time = torch.zeros(self.num_imagination_envs, 4, device=self.device)
+        self.current_contact_time = torch.zeros(self.num_imagination_envs, 4, device=self.device)
         self._feet_gait_pairs_cache = None
         self._joint_mirror_pairs_cache = None
     
-    def _reset_additional_imagination_attributes(self, env_ids): # 在 imagination env 中重置与接触相关的属性
+    def _reset_additional_imagination_attributes(self, env_ids):
         self.last_air_time[env_ids] = 0.0
         self.current_air_time[env_ids] = 0.0
         self.last_contact_time[env_ids] = 0.0
@@ -124,7 +124,7 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
             resolved_pairs.append((left_ids[:pair_len], right_ids[:pair_len]))
         return resolved_pairs if len(resolved_pairs) > 0 else None
     
-    def get_imagination_observation(self, state_history, action_history, observation_noise=None): # 从状态历史和动作历史中获取 imagination observation
+    def get_imagination_observation(self, state_history, action_history, observation_noise=None):
         obs_base_lin_vel = self.imagination_state_normalizer.inverse(state_history[:, -1])[:, 0:3] 
         obs_base_ang_vel = self.imagination_state_normalizer.inverse(state_history[:, -1])[:, 3:6]
         obs_projected_gravity = self.imagination_state_normalizer.inverse(state_history[:, -1])[:, 6:9]
@@ -166,7 +166,7 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
             [critic_base_lin_vel, critic_base_ang_vel, critic_projected_gravity, self.base_velocity, critic_joint_pos, critic_joint_vel, self.obs_last_action],
             dim=1,
         )
-            # obs = torch.cat([obs_base_ang_vel, obs_projected_gravity, self.base_velocity, obs_joint_pos, obs_joint_vel, self.obs_last_action], dim=1) # 将观测的各个部分拼接在一起，形成最终的观测向量
+
         # obs = TensorDict({"policy": obs}, batch_size=[self.num_imagination_envs], device=self.device)
         obs = TensorDict({"policy": policy_obs, "critic": critic_obs}, batch_size=[self.num_imagination_envs], device=self.device)
         self.last_obs = obs
@@ -198,9 +198,9 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         }
         return parsed_extensions
     
-    def _parse_contacts(self, contacts): # 解析接触信息，分为大腿接触和脚部接触
-        thigh_contact = torch.sigmoid(contacts[:, 0:4]).round() if contacts is not None else None # 大腿接触信息[0:4]，经过 sigmoid 和 round 处理后得到二值化的接触状态
-        foot_contact = torch.sigmoid(contacts[:, 4:8]).round() if contacts is not None else None # 脚部接触信息[4:8]，经过 sigmoid 和 round 处理后得到二值化的接触状态
+    def _parse_contacts(self, contacts):
+        thigh_contact = torch.sigmoid(contacts[:, 0:4]).round() if contacts is not None else None
+        foot_contact = torch.sigmoid(contacts[:, 4:8]).round() if contacts is not None else None
         
         parsed_contacts = {
             "thigh_contact": thigh_contact,
@@ -208,7 +208,7 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         }
         return parsed_contacts
     
-    def _parse_terminations(self, terminations): # 解析终止信息，经过 sigmoid 和 round 处理后得到二值化的终止状态
+    def _parse_terminations(self, terminations):
         parsed_terminations = torch.sigmoid(terminations).squeeze(-1).round().bool() if terminations is not None else None
         bad_orientation_2 = None
         if hasattr(self, "_latest_projected_gravity"):

@@ -20,6 +20,46 @@ from isaaclab.app import AppLauncher
 import cli_args  # isort: skip
 
 
+PRETRAIN_STATE_MEAN = [
+    0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0,
+    0.0, 0.0, -1.0,
+    0.0, 0.0, 0.0,
+    0.0, 0.1, 0.0, -0.2, -0.2, 0.4,
+    0.4, 0.3, 0.3,
+    0.0, 0.0, 0.1, -0.1,
+    -0.5, -0.6, -0.5, -0.5,
+    1.1, 1.2, 1.3, 1.3,
+    0.4, -0.6, 1.0, -0.7, 0.6, 0.6,
+    -1.3, -1.3, -4.4, -4.6, -6.0, -6.0,
+]
+PRETRAIN_STATE_STD = [
+    0.8, 0.4, 0.2,
+    0.9, 0.8, 0.3,
+    0.1, 0.1, 0.1,
+    0.1, 0.1, 0.1,
+    0.1, 0.3, 0.3, 0.3, 0.3, 0.2,
+    0.2, 0.2, 0.2,
+    2.1, 2.2, 2.2, 2.1,
+    6.0, 5.1, 4.8, 5.0,
+    5.6, 5.9, 5.6, 5.6,
+    2.7, 2.7, 3.0, 2.9, 4.3, 4.2,
+    4.2, 4.1, 8.7, 8.2, 8.6, 9.1,
+]
+PRETRAIN_ACTION_MEAN = [
+    0.2, 0.5, 1.1,
+    -0.3, -0.1, 1.2,
+    0.3, -0.9, 0.6,
+    -0.3, -1.1, 0.7,
+]
+PRETRAIN_ACTION_STD = [
+    1.1, 1.5, 1.5,
+    1.1, 1.3, 1.6,
+    1.2, 1.2, 1.4,
+    1.1, 1.3, 1.5,
+]
+
+
 parser = argparse.ArgumentParser(description="Train a standalone world model with online simulator interaction.")
 parser.add_argument("--num_envs", type=int, default=100, help="Number of environments to simulate.")
 parser.add_argument(
@@ -115,10 +155,16 @@ def _align_world_model_cfg(agent_cfg):
     agent_cfg.algorithm.system_dynamics_num_eval_trajectories = offline_cfg.data_config.num_eval_trajectories
     agent_cfg.algorithm.system_dynamics_len_eval_trajectory = offline_cfg.data_config.len_eval_trajectory
 
-    agent_cfg.imagination.state_normalizer.mean = list(offline_cfg.data_config.state_data_mean)
-    agent_cfg.imagination.state_normalizer.std = list(offline_cfg.data_config.state_data_std)
-    agent_cfg.imagination.action_normalizer.mean = list(offline_cfg.data_config.action_data_mean)
-    agent_cfg.imagination.action_normalizer.std = list(offline_cfg.data_config.action_data_std)
+    # Explicitly pin to pretrain defaults so normalizer source is unambiguous.
+    agent_cfg.imagination.state_normalizer.mean = list(PRETRAIN_STATE_MEAN)
+    agent_cfg.imagination.state_normalizer.std = list(PRETRAIN_STATE_STD)
+    agent_cfg.imagination.action_normalizer.mean = list(PRETRAIN_ACTION_MEAN)
+    agent_cfg.imagination.action_normalizer.std = list(PRETRAIN_ACTION_STD)
+
+    offline_cfg.data_config.state_data_mean = list(PRETRAIN_STATE_MEAN)
+    offline_cfg.data_config.state_data_std = list(PRETRAIN_STATE_STD)
+    offline_cfg.data_config.action_data_mean = list(PRETRAIN_ACTION_MEAN)
+    offline_cfg.data_config.action_data_std = list(PRETRAIN_ACTION_STD)
 
     agent_cfg.system_dynamics_num_visualizations = offline_cfg.data_config.num_visualizations
     agent_cfg.system_dynamics_state_idx_dict = dict(offline_cfg.data_config.state_idx_dict)
@@ -210,6 +256,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg, agent_cfg):
         f"[INFO] Approx. simulator transitions = "
         f"{env_cfg.scene.num_envs} envs * {agent_cfg.num_steps_per_env} steps/iter * {agent_cfg.max_iterations} iters "
         f"= {env_cfg.scene.num_envs * agent_cfg.num_steps_per_env * agent_cfg.max_iterations}"
+    )
+    print(
+        "[INFO] Using explicit pretrain normalizer defaults "
+        f"(state_dim={len(PRETRAIN_STATE_MEAN)}, action_dim={len(PRETRAIN_ACTION_MEAN)})."
     )
 
     runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
