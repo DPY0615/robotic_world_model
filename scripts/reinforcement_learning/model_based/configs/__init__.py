@@ -1,5 +1,11 @@
 from .base_cfg import BaseConfig
 from .anymal_d_flat_cfg import AnymalDFlatConfig
-from .lite3_flat_cfg import Lite3FlatConfig
+from .lite3_flat_cfg import Lite3FlatConfig, LITE3_OFFLINE_PRESETS, make_lite3_flat_config
 
-__all__ = ["BaseConfig", "AnymalDFlatConfig", "Lite3FlatConfig"]
+__all__ = [
+	"BaseConfig",
+	"AnymalDFlatConfig",
+	"Lite3FlatConfig",
+	"LITE3_OFFLINE_PRESETS",
+	"make_lite3_flat_config",
+]

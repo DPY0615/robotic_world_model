@@ -29,9 +29,6 @@ class DeeproboticsLite3FlatEnvCfg(DeeproboticsLite3RoughEnvCfg):
             "feet_height",
             "feet_height_body",
             "contact_forces",
-            "feet_gait",
-            "joint_mirror",
-            "joint_pos_limits",
         ]
         for reward_name in unsupported_reward_names:
             reward_term = getattr(self.rewards, reward_name, None)
@@ -170,28 +167,54 @@ class DeeproboticsLite3FlatEnvCfg_FINETUNE(DeeproboticsLite3FlatEnvCfg_PRETRAIN)
 
         # use sampled velocity command class in finetune
         self.commands.base_velocity.class_type = SampleUniformVelocityCommand
+        self.disable_zero_weight_rewards()
 
-        # Default finetune reward profile uses the selected global_spike tuning.
-        self.rewards.track_lin_vel_xy_exp.weight = 2.1
-        self.rewards.track_ang_vel_z_exp.weight = 1.0
-        self.rewards.track_lin_vel_xy_exp.params["std"] = 1.05
-        self.rewards.track_ang_vel_z_exp.params["std"] = 1.05
 
-        self.rewards.flat_orientation_l2.weight = -8.8
-        self.rewards.lin_vel_z_l2.weight = -3.4
-        self.rewards.ang_vel_xy_l2.weight = -0.15
-        self.rewards.action_rate_l2.weight = -0.055
+@configclass
+class DeeproboticsLite3FlatEnvCfg_FINETUNE_GLOBAL_BALANCED(DeeproboticsLite3FlatEnvCfg_FINETUNE):
+    """Balanced omni-directional command coverage with moderate tracking emphasis."""
 
-        self.rewards.feet_air_time.weight = 0.4
-        self.rewards.feet_air_time.params["threshold"] = 0.28
-        self.rewards.feet_air_time_variance.weight = -0.3
+    def __post_init__(self) -> None:
+        super().__post_init__()
 
-        self.rewards.joint_deviation_l1.weight = -0.07
-        self.rewards.stand_still.weight = 0.0
-        self.rewards.stand_still.params["command_threshold"] = 0.02
-        self.rewards.feet_contact_without_cmd.weight = 0.0
-        
-        self.disable_mbrl_unsupported_rewards()
+        # Increase command diversity for x/y/yaw and resample more frequently.
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.2, 1.2)
+        self.commands.base_velocity.ranges.lin_vel_y = (-1.2, 1.2)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.2, 1.2)
+        self.commands.base_velocity.resampling_time_range = (0.25, 2.0)
+
+        # Keep reward profile close to stable defaults while reducing directional bias.
+        self.rewards.track_lin_vel_xy_exp.weight = 3.2
+        self.rewards.track_ang_vel_z_exp.weight = 1.8
+        self.rewards.action_rate_l2.weight = -0.015
+        self.rewards.stand_still.weight = -0.2
+        self.rewards.feet_contact_without_cmd.weight = 0.05
+
+        self.disable_zero_weight_rewards()
+
+
+@configclass
+class DeeproboticsLite3FlatEnvCfg_FINETUNE_CONS_YAW(DeeproboticsLite3FlatEnvCfg_FINETUNE):
+    """Conservative posture with stronger yaw/lateral command learning."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+
+        # Bias coverage toward lateral/yaw commands to improve non-forward locomotion.
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-1.3, 1.3)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.5, 1.5)
+        self.commands.base_velocity.resampling_time_range = (0.2, 1.5)
+
+        # Strengthen yaw tracking while relaxing symmetry/command smoothness constraints.
+        self.rewards.track_lin_vel_xy_exp.weight = 2.8
+        self.rewards.track_ang_vel_z_exp.weight = 2.3
+        self.rewards.action_rate_l2.weight = -0.01
+        self.rewards.joint_mirror.weight = -0.02
+        self.rewards.feet_gait.weight = 0.35
+        self.rewards.stand_still.weight = -0.15
+        self.rewards.feet_contact_without_cmd.weight = 0.05
+
         self.disable_zero_weight_rewards()
 
 @configclass

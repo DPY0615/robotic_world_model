@@ -33,10 +33,52 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import sys
 from pathlib import Path
 
 from isaaclab.app import AppLauncher
+
+
+PRETRAIN_STATE_MEAN = [
+    0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0,
+    0.0, 0.0, -1.0,
+    0.0, 0.0, 0.0,
+    0.0, 0.1, 0.0, -0.2, -0.2, 0.4,
+    0.4, 0.3, 0.3,
+    0.0, 0.0, 0.1, -0.1,
+    -0.5, -0.6, -0.5, -0.5,
+    1.1, 1.2, 1.3, 1.3,
+    0.4, -0.6, 1.0, -0.7, 0.6, 0.6,
+    -1.3, -1.3, -4.4, -4.6, -6.0, -6.0,
+]
+PRETRAIN_STATE_STD = [
+    0.8, 0.4, 0.2,
+    0.9, 0.8, 0.3,
+    0.1, 0.1, 0.1,
+    0.1, 0.1, 0.1,
+    0.1, 0.3, 0.3, 0.3, 0.3, 0.2,
+    0.2, 0.2, 0.2,
+    2.1, 2.2, 2.2, 2.1,
+    6.0, 5.1, 4.8, 5.0,
+    5.6, 5.9, 5.6, 5.6,
+    2.7, 2.7, 3.0, 2.9, 4.3, 4.2,
+    4.2, 4.1, 8.7, 8.2, 8.6, 9.1,
+]
+PRETRAIN_ACTION_MEAN = [
+    0.2, 0.5, 1.1,
+    -0.3, -0.1, 1.2,
+    0.3, -0.9, 0.6,
+    -0.3, -1.1, 0.7,
+]
+PRETRAIN_ACTION_STD = [
+    1.1, 1.5, 1.5,
+    1.1, 1.3, 1.6,
+    1.2, 1.2, 1.4,
+    1.1, 1.3, 1.5,
+]
+NORMALIZER_METADATA_FILE = "normalizer_pretrain_defaults.json"
 
 
 parser = argparse.ArgumentParser(description="Export Lite3 simulator rollouts to offline CSV dataset files.")
@@ -97,6 +139,20 @@ def _next_file_index(output_dir: Path) -> int:
         if suffix.isdigit():
             max_index = max(max_index, int(suffix))
     return max_index + 1
+
+
+def _write_normalizer_metadata(output_dir: Path) -> None:
+    metadata_path = output_dir / NORMALIZER_METADATA_FILE
+    payload = {
+        "source": "explicit_pretrain_defaults",
+        "state_data_mean": PRETRAIN_STATE_MEAN,
+        "state_data_std": PRETRAIN_STATE_STD,
+        "action_data_mean": PRETRAIN_ACTION_MEAN,
+        "action_data_std": PRETRAIN_ACTION_STD,
+    }
+    with metadata_path.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+    print(f"[INFO] Wrote normalizer metadata: {metadata_path}")
 
 
 def _sample_actions(action_dim: int, device: torch.device, source: str) -> torch.Tensor:
@@ -174,6 +230,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     output_dir = Path(args_cli.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    _write_normalizer_metadata(output_dir)
     file_index = args_cli.start_index if args_cli.start_index is not None else _next_file_index(output_dir)
 
     env_cfg.scene.num_envs = 1

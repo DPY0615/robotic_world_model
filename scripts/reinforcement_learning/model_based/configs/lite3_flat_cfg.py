@@ -16,27 +16,28 @@ class Lite3FlatConfig(BaseConfig):
         reward_term_weights: Dict[str, float] = field(
             default_factory=lambda: {
                 "action_rate_l2": -0.02,
+                # Keep aligned with current Finetune-v0, where these terms are disabled.
                 "base_height_l2": 0.0,
-                "feet_air_time": 0.5,
-                "feet_air_time_variance": -1.0,
+                "feet_air_time": 5.0,
+                "feet_air_time_variance": -8.0,
                 "feet_slide": 0.0,
-                "stand_still": -1.0,
+                "stand_still": -0.5,
                 "feet_height_body": 0.0,
                 "feet_height": 0.0,
                 "contact_forces": 0.0,
                 "lin_vel_z_l2": -2.0,
                 "ang_vel_xy_l2": -0.05,
-                "track_lin_vel_xy_exp": 5.0,
-                "track_ang_vel_z_exp": 0.5,
-                "undesired_contacts": -1.0,
+                "track_lin_vel_xy_exp": 3.0,
+                "track_ang_vel_z_exp": 1.5,
+                "undesired_contacts": -0.5,
                 "joint_torques_l2": -2.5e-5,
                 "joint_acc_l2": -1.0e-8,
                 "joint_deviation_l1": -0.5,
                 "joint_power": -2.0e-5,
                 "flat_orientation_l2": -5.0,
-                "feet_gait": 0.0,
-                "joint_mirror": 0.2,
-                "joint_pos_limits": 0.2,
+                "feet_gait": 0.5,
+                "joint_mirror": -0.05,
+                "joint_pos_limits": -5.0,
                 "feet_contact_without_cmd": 0.1,
             }
         )
@@ -151,6 +152,13 @@ class Lite3FlatConfig(BaseConfig):
         save_interval: int = 50
         max_iterations: int = 500
 
+    @dataclass
+    class SimReferenceConfig:
+        enabled: bool = True
+        task: str = "Template-Isaac-Velocity-Flat-Lite3-Pretrain-v0"
+        num_envs: int = 64
+        num_steps: int = 600
+
     experiment_config: ExperimentConfig = field(default_factory=ExperimentConfig)
     environment_config: EnvironmentConfig = field(default_factory=EnvironmentConfig)
     data_config: DataConfig = field(default_factory=DataConfig)
@@ -158,3 +166,166 @@ class Lite3FlatConfig(BaseConfig):
     policy_architecture_config: PolicyArchitectureConfig = field(default_factory=PolicyArchitectureConfig)
     policy_algorithm_config: PolicyAlgorithmConfig = field(default_factory=PolicyAlgorithmConfig)
     policy_training_config: PolicyTrainingConfig = field(default_factory=PolicyTrainingConfig)
+    sim_reference_config: SimReferenceConfig = field(default_factory=SimReferenceConfig)
+
+
+# Presets around finetune run:
+# logs/rsl_rl/deeprobotics_lite3_flat/2026-04-18_16-19-52_s2_term_balance_20260418_161940
+LITE3_OFFLINE_PRESETS: Dict[str, Dict[str, object]] = {
+    "ftbest_ref": {
+        "reward_term_weights": {
+            "action_rate_l2": -0.022,
+            "feet_air_time": 1.0,
+            "feet_air_time_variance": -1.0,
+            "stand_still": 0.0,
+            "track_lin_vel_xy_exp": 3.0,
+            "track_ang_vel_z_exp": 1.6,
+            "feet_gait": 0.45,
+            "joint_mirror": -0.04,
+            "feet_contact_without_cmd": 0.0,
+        },
+        "uncertainty_penalty_weight": -0.0,
+    },
+    "ftbest_ref_u03": {
+        "reward_term_weights": {
+            "action_rate_l2": -0.022,
+            "feet_air_time": 1.0,
+            "feet_air_time_variance": -1.0,
+            "stand_still": 0.0,
+            "track_lin_vel_xy_exp": 3.0,
+            "track_ang_vel_z_exp": 1.6,
+            "feet_gait": 0.45,
+            "joint_mirror": -0.04,
+            "feet_contact_without_cmd": 0.0,
+        },
+        "uncertainty_penalty_weight": -0.3,
+    },
+    "ftbest_track": {
+        "reward_term_weights": {
+            "action_rate_l2": -0.020,
+            "feet_air_time": 0.8,
+            "feet_air_time_variance": -1.2,
+            "stand_still": -0.1,
+            "track_lin_vel_xy_exp": 3.4,
+            "track_ang_vel_z_exp": 1.9,
+            "feet_gait": 0.35,
+            "joint_mirror": -0.03,
+            "feet_contact_without_cmd": 0.05,
+        },
+        "uncertainty_penalty_weight": -0.5,
+    },
+    "ftbest_stable": {
+        "reward_term_weights": {
+            "action_rate_l2": -0.018,
+            "feet_air_time": 0.6,
+            "feet_air_time_variance": -1.5,
+            "stand_still": -0.2,
+            "track_lin_vel_xy_exp": 3.2,
+            "track_ang_vel_z_exp": 1.7,
+            "feet_gait": 0.25,
+            "joint_mirror": -0.02,
+            "feet_contact_without_cmd": 0.05,
+        },
+        "uncertainty_penalty_weight": -0.8,
+    },
+    "ftbest_recover": {
+        "reward_term_weights": {
+            "action_rate_l2": -0.019,
+            "feet_air_time": 0.9,
+            "feet_air_time_variance": -1.1,
+            "stand_still": -0.05,
+            "track_lin_vel_xy_exp": 3.1,
+            "track_ang_vel_z_exp": 1.8,
+            "feet_gait": 0.35,
+            "joint_mirror": -0.03,
+            "feet_contact_without_cmd": 0.03,
+        },
+        "uncertainty_penalty_weight": -0.4,
+    },
+    "ftbest_track_aggr": {
+        "reward_term_weights": {
+            "action_rate_l2": -0.020,
+            "feet_air_time": 0.75,
+            "feet_air_time_variance": -1.0,
+            "stand_still": -0.05,
+            "track_lin_vel_xy_exp": 3.6,
+            "track_ang_vel_z_exp": 2.1,
+            "feet_gait": 0.30,
+            "joint_mirror": -0.02,
+            "feet_contact_without_cmd": 0.02,
+        },
+        "uncertainty_penalty_weight": -0.6,
+    },
+    "ftbest_track_aggr_u05": {
+        "reward_term_weights": {
+            "action_rate_l2": -0.020,
+            "feet_air_time": 0.75,
+            "feet_air_time_variance": -1.0,
+            "stand_still": -0.05,
+            "track_lin_vel_xy_exp": 3.6,
+            "track_ang_vel_z_exp": 2.1,
+            "feet_gait": 0.30,
+            "joint_mirror": -0.02,
+            "feet_contact_without_cmd": 0.02,
+        },
+        "uncertainty_penalty_weight": -0.5,
+    },
+    "ftbest_track_aggr_smooth": {
+        "reward_term_weights": {
+            "action_rate_l2": -0.022,
+            "feet_air_time": 0.75,
+            "feet_air_time_variance": -1.0,
+            "stand_still": -0.05,
+            "track_lin_vel_xy_exp": 3.6,
+            "track_ang_vel_z_exp": 2.0,
+            "feet_gait": 0.30,
+            "joint_mirror": -0.02,
+            "feet_contact_without_cmd": 0.02,
+        },
+        "uncertainty_penalty_weight": -0.6,
+    },
+    "ftbest_track_aggr_gait": {
+        "reward_term_weights": {
+            "action_rate_l2": -0.020,
+            "feet_air_time": 0.85,
+            "feet_air_time_variance": -1.1,
+            "stand_still": -0.05,
+            "track_lin_vel_xy_exp": 3.6,
+            "track_ang_vel_z_exp": 2.1,
+            "feet_gait": 0.34,
+            "joint_mirror": -0.025,
+            "feet_contact_without_cmd": 0.025,
+        },
+        "uncertainty_penalty_weight": -0.55,
+    },
+    "ftbest_anti_knee": {
+        "reward_term_weights": {
+            "action_rate_l2": -0.024,
+            "feet_air_time": 0.95,
+            "feet_air_time_variance": -1.3,
+            "stand_still": -0.20,
+            "track_lin_vel_xy_exp": 3.0,
+            "track_ang_vel_z_exp": 1.7,
+            "feet_gait": 0.42,
+            "joint_mirror": -0.045,
+            "joint_deviation_l1": -0.7,
+            "feet_contact_without_cmd": 0.08,
+        },
+        "uncertainty_penalty_weight": -0.8,
+    },
+}
+
+
+def make_lite3_flat_config(preset: str | None = None) -> Lite3FlatConfig:
+    config = Lite3FlatConfig()
+    if preset is None:
+        return config
+
+    if preset not in LITE3_OFFLINE_PRESETS:
+        valid = ", ".join(sorted(LITE3_OFFLINE_PRESETS.keys()))
+        raise ValueError(f"Unknown Lite3 offline preset: {preset}. Valid presets: {valid}")
+
+    preset_cfg = LITE3_OFFLINE_PRESETS[preset]
+    config.environment_config.reward_term_weights.update(preset_cfg["reward_term_weights"])
+    config.environment_config.uncertainty_penalty_weight = float(preset_cfg["uncertainty_penalty_weight"])
+    return config

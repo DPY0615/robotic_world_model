@@ -1,10 +1,20 @@
-from configs import BaseConfig, AnymalDFlatConfig, Lite3FlatConfig
+from configs import (
+    BaseConfig,
+    AnymalDFlatConfig,
+    Lite3FlatConfig,
+    LITE3_OFFLINE_PRESETS,
+    make_lite3_flat_config,
+)
 from envs import BaseEnv, AnymalDFlatEnv, Lite3FlatEnv
 from policy_training import PolicyTraining
 from rsl_rl.modules import ActorCritic, SystemDynamicsEnsemble
 from rsl_rl.algorithms import PPO
 from rsl_rl.utils import resolve_obs_groups
 import os
+import glob
+import json
+import subprocess
+import sys
 import torch
 from torch.utils.data import Dataset
 import argparse
@@ -292,6 +302,79 @@ def run_experiment(config: BaseConfig):
     model_experiment.prepare_algorithm(**config.policy_algorithm_config.to_dict())
     model_experiment.prepare_data(**config.data_config.to_dict())
     model_experiment.train_policy(log_dir, **config.policy_training_config.to_dict())
+
+    # Run simulator reference evaluation after offline training if enabled.
+    sim_cfg = getattr(config, "sim_reference_config", None)
+    if sim_cfg is not None and getattr(sim_cfg, "enabled", False):
+        policy_ckpts = glob.glob(os.path.join(log_dir, "policy_*.pt"))
+        if len(policy_ckpts) == 0:
+            print("[SimRef] No policy checkpoint found. Skip sim reference eval.")
+        else:
+            def _policy_iter(path: str) -> int:
+                base = os.path.basename(path)
+                stem = os.path.splitext(base)[0]
+                try:
+                    return int(stem.split("_")[-1])
+                except ValueError:
+                    return -1
+
+            policy_ckpt = sorted(policy_ckpts, key=_policy_iter)[-1]
+            sim_metrics_path = os.path.join(log_dir, "sim_reference_metrics.json")
+
+            sim_num_steps = sim_cfg.num_steps
+            if args_cli.sim_ref_steps_override is not None:
+                sim_num_steps = args_cli.sim_ref_steps_override
+            sim_num_envs = sim_cfg.num_envs
+            if args_cli.sim_ref_num_envs_override is not None:
+                sim_num_envs = args_cli.sim_ref_num_envs_override
+
+            cmd = [
+                sys.executable,
+                "scripts/reinforcement_learning/model_based/sim_reference_eval.py",
+                "--headless",
+                "--task",
+                sim_cfg.task,
+                "--offline_task",
+                args_cli.task,
+                "--checkpoint",
+                policy_ckpt,
+                "--num_envs",
+                str(sim_num_envs),
+                "--num_steps",
+                str(sim_num_steps),
+                "--output_json",
+                sim_metrics_path,
+                "--device",
+                str(config.experiment_config.device),
+            ]
+            print("[SimRef] Running simulator reference eval:")
+            print(" ".join(cmd))
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.stdout:
+                print(result.stdout)
+            if result.returncode != 0:
+                print("[SimRef] Evaluation failed.")
+                if result.stderr:
+                    print(result.stderr)
+            elif os.path.exists(sim_metrics_path):
+                with open(sim_metrics_path, "r", encoding="utf-8") as f:
+                    sim_metrics = json.load(f)
+                print(
+                    "[SimRef] Summary: "
+                    f"mean_episode_reward={sim_metrics.get('mean_episode_reward')}, "
+                    f"mean_episode_length={sim_metrics.get('mean_episode_length')}, "
+                    f"mean_step_reward={sim_metrics.get('mean_step_reward')}, "
+                    f"finished_episodes={sim_metrics.get('num_finished_episodes')}"
+                )
+                if wandb.run is not None:
+                    wandb.log(
+                        {
+                            "SimRef/mean_episode_reward": sim_metrics.get("mean_episode_reward", float("nan")),
+                            "SimRef/mean_episode_length": sim_metrics.get("mean_episode_length", float("nan")),
+                            "SimRef/mean_step_reward": sim_metrics.get("mean_step_reward", float("nan")),
+                            "SimRef/num_finished_episodes": sim_metrics.get("num_finished_episodes", 0),
+                        }
+                    )
     print(f"Training completed. Policy saved to {log_dir}.")
 
 
@@ -307,13 +390,65 @@ def resolve_task_config(task: str):
     if task == "lite3_flat":
         config = Lite3FlatConfig()
         return config
+    lite3_preset_tasks = {
+        "lite3_flat_ftbest_ref": "ftbest_ref",
+        "lite3_flat_ftbest_ref_u03": "ftbest_ref_u03",
+        "lite3_flat_ftbest_track": "ftbest_track",
+        "lite3_flat_ftbest_stable": "ftbest_stable",
+        "lite3_flat_ftbest_recover": "ftbest_recover",
+        "lite3_flat_ftbest_track_aggr": "ftbest_track_aggr",
+        "lite3_flat_ftbest_track_aggr_u05": "ftbest_track_aggr_u05",
+        "lite3_flat_ftbest_track_aggr_smooth": "ftbest_track_aggr_smooth",
+        "lite3_flat_ftbest_track_aggr_gait": "ftbest_track_aggr_gait",
+        "lite3_flat_ftbest_anti_knee": "ftbest_anti_knee",
+    }
+    if task in lite3_preset_tasks:
+        preset = lite3_preset_tasks[task]
+        config = make_lite3_flat_config(preset)
+        return config
     else:
-        raise ValueError(f"Unknown task: {task}")
+        valid = ["anymal_d_flat", "lite3_flat"] + [
+            "lite3_flat_ftbest_ref",
+            "lite3_flat_ftbest_ref_u03",
+            "lite3_flat_ftbest_track",
+            "lite3_flat_ftbest_stable",
+            "lite3_flat_ftbest_recover",
+            "lite3_flat_ftbest_track_aggr",
+            "lite3_flat_ftbest_track_aggr_u05",
+            "lite3_flat_ftbest_track_aggr_smooth",
+            "lite3_flat_ftbest_track_aggr_gait",
+            "lite3_flat_ftbest_anti_knee",
+        ]
+        valid_presets = ", ".join(sorted(LITE3_OFFLINE_PRESETS.keys()))
+        raise ValueError(
+            f"Unknown task: {task}. Valid tasks: {', '.join(valid)}. "
+            f"Available Lite3 presets: {valid_presets}"
+        )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Online learning training.")
     parser.add_argument("--task", type=str, default="anymal_d_flat", help="Task to use for the experiment.")
     parser.add_argument("--run_num", type=int, default=None, help="Run number for the experiment on the cluster.")
+    parser.add_argument(
+        "--max_iterations_override",
+        type=int,
+        default=None,
+        help="Optional override for policy_training_config.max_iterations.",
+    )
+    parser.add_argument(
+        "--sim_ref_steps_override",
+        type=int,
+        default=None,
+        help="Optional override for simulator reference evaluation rollout steps.",
+    )
+    parser.add_argument(
+        "--sim_ref_num_envs_override",
+        type=int,
+        default=None,
+        help="Optional override for simulator reference evaluation num_envs.",
+    )
     args_cli = parser.parse_args()
     config = resolve_task_config(args_cli.task)
+    if args_cli.max_iterations_override is not None:
+        config.policy_training_config.max_iterations = args_cli.max_iterations_override
     run(config)

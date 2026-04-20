@@ -57,12 +57,72 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         self.current_air_time = torch.zeros(self.num_imagination_envs, 4, device=self.device) # 当前离地时间
         self.last_contact_time = torch.zeros(self.num_imagination_envs, 4, device=self.device) # 最后一次接触时间
         self.current_contact_time = torch.zeros(self.num_imagination_envs, 4, device=self.device) # 当前接触时间
+        self._feet_gait_pairs_cache = None
+        self._joint_mirror_pairs_cache = None
     
     def _reset_additional_imagination_attributes(self, env_ids): # 在 imagination env 中重置与接触相关的属性
         self.last_air_time[env_ids] = 0.0
         self.current_air_time[env_ids] = 0.0
         self.last_contact_time[env_ids] = 0.0
         self.current_contact_time[env_ids] = 0.0
+
+    def _resolve_foot_indices(self, foot_names):
+        # The imagination contact layout is fixed to local foot order: [FL, FR, HL, HR].
+        # Resolve gait feet by semantic names, not global body ids from contact sensors.
+        resolved = []
+        for foot_name in foot_names:
+            key = str(foot_name).upper()
+            if "FL" in key:
+                resolved.append(0)
+            elif "FR" in key:
+                resolved.append(1)
+            elif "HL" in key:
+                resolved.append(2)
+            elif "HR" in key:
+                resolved.append(3)
+            else:
+                return []
+
+        if len(set(resolved)) != len(resolved):
+            return []
+        return resolved
+
+    def _resolve_joint_indices(self, joint_pattern):
+        robot = self.scene["robot"]
+        try:
+            return list(robot.find_joints(joint_pattern)[0])
+        except Exception:
+            return []
+
+    def _build_feet_gait_pairs(self):
+        if "feet_gait" not in self.reward_term_names:
+            return None
+        gait_cfg = self.reward_manager.get_term_cfg("feet_gait")
+        gait_pairs = gait_cfg.params.get("synced_feet_pair_names", None)
+        if gait_pairs is None or len(gait_pairs) != 2:
+            return None
+        pair0 = self._resolve_foot_indices(gait_pairs[0])
+        pair1 = self._resolve_foot_indices(gait_pairs[1])
+        if len(pair0) != 2 or len(pair1) != 2:
+            return None
+        return [pair0, pair1]
+
+    def _build_joint_mirror_pairs(self):
+        if "joint_mirror" not in self.reward_term_names:
+            return None
+        mirror_cfg = self.reward_manager.get_term_cfg("joint_mirror")
+        mirror_pairs = mirror_cfg.params.get("mirror_joints", [])
+        resolved_pairs = []
+        for joint_pair in mirror_pairs:
+            if len(joint_pair) != 2:
+                continue
+            left_ids = self._resolve_joint_indices(joint_pair[0])
+            right_ids = self._resolve_joint_indices(joint_pair[1])
+            pair_len = min(len(left_ids), len(right_ids))
+            if pair_len == 0:
+                continue
+            resolved_pairs.append((left_ids[:pair_len], right_ids[:pair_len]))
+        return resolved_pairs if len(resolved_pairs) > 0 else None
     
     def get_imagination_observation(self, state_history, action_history, observation_noise=None): # 从状态历史和动作历史中获取 imagination observation
         obs_base_lin_vel = self.imagination_state_normalizer.inverse(state_history[:, -1])[:, 0:3] 
@@ -230,24 +290,28 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         feet_air_time_variance = torch.zeros(self.num_imagination_envs, device=self.device)
         feet_contact_without_cmd = torch.zeros(self.num_imagination_envs, device=self.device)
         undesired_contacts = torch.zeros(self.num_imagination_envs, device=self.device)
+        feet_gait = torch.zeros(self.num_imagination_envs, device=self.device)
 
         if foot_contact is not None:
-            # First contact event from internal contact-time buffer
-            first_contact = (self.current_contact_time > 0.0) & (
-                self.current_contact_time < (self.step_dt + 1.0e-8)
-            )
-
-            feet_air_time = torch.sum((self.last_air_time - 0.5) * first_contact, dim=1) * (cmd_norm > 0.1)
-            feet_contact_without_cmd = torch.sum(first_contact.float(), dim=1) * (cmd_norm < 0.5)
-
             is_contact = foot_contact.bool()
             is_first_contact = (self.current_air_time > 0.0) & is_contact
             is_first_detached = (self.current_contact_time > 0.0) & (~is_contact)
 
-            self.last_air_time = torch.where(is_first_contact, self.current_air_time + self.step_dt, self.last_air_time)
+            feet_air_time_threshold = 0.5
+            if "feet_air_time" in self.reward_term_names:
+                feet_air_time_threshold = self.reward_manager.get_term_cfg("feet_air_time").params.get(
+                    "threshold", feet_air_time_threshold
+                )
+
+            feet_air_time = torch.sum((self.last_air_time - feet_air_time_threshold) * is_first_contact, dim=1) * (
+                cmd_norm > 0.1
+            )
+            feet_contact_without_cmd = torch.sum(is_first_contact.float(), dim=1) * (cmd_norm < 0.5)
+
+            self.last_air_time = torch.where(is_first_contact, self.current_air_time, self.last_air_time)
             self.current_air_time = torch.where(~is_contact, self.current_air_time + self.step_dt, 0.0)
             self.last_contact_time = torch.where(
-                is_first_detached, self.current_contact_time + self.step_dt, self.last_contact_time
+                is_first_detached, self.current_contact_time, self.last_contact_time
             )
             self.current_contact_time = torch.where(is_contact, self.current_contact_time + self.step_dt, 0.0)
 
@@ -255,8 +319,79 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
                 torch.clamp(self.last_contact_time, max=0.5), dim=1
             )
 
+            if "feet_gait" in self.reward_term_names:
+                if self._feet_gait_pairs_cache is None:
+                    self._feet_gait_pairs_cache = self._build_feet_gait_pairs()
+                gait_pairs = self._feet_gait_pairs_cache
+                if gait_pairs is not None:
+                    gait_cfg = self.reward_manager.get_term_cfg("feet_gait")
+                    std = gait_cfg.params.get("std", 0.5**0.5)
+                    max_err = gait_cfg.params.get("max_err", 0.2)
+                    velocity_threshold = gait_cfg.params.get("velocity_threshold", 0.5)
+                    command_threshold = gait_cfg.params.get("command_threshold", 0.1)
+
+                    pair_0 = gait_pairs[0]
+                    pair_1 = gait_pairs[1]
+
+                    air_time = self.current_air_time
+                    contact_time = self.current_contact_time
+
+                    def _sync_reward_func(foot_0, foot_1):
+                        se_air = torch.clip(torch.square(air_time[:, foot_0] - air_time[:, foot_1]), max=max_err**2)
+                        se_contact = torch.clip(
+                            torch.square(contact_time[:, foot_0] - contact_time[:, foot_1]), max=max_err**2
+                        )
+                        return torch.exp(-(se_air + se_contact) / std)
+
+                    def _async_reward_func(foot_0, foot_1):
+                        se_act_0 = torch.clip(
+                            torch.square(air_time[:, foot_0] - contact_time[:, foot_1]), max=max_err**2
+                        )
+                        se_act_1 = torch.clip(
+                            torch.square(contact_time[:, foot_0] - air_time[:, foot_1]), max=max_err**2
+                        )
+                        return torch.exp(-(se_act_0 + se_act_1) / std)
+
+                    sync_reward = _sync_reward_func(pair_0[0], pair_0[1]) * _sync_reward_func(pair_1[0], pair_1[1])
+                    async_reward = (
+                        _async_reward_func(pair_0[0], pair_1[0])
+                        * _async_reward_func(pair_0[1], pair_1[1])
+                        * _async_reward_func(pair_0[0], pair_1[1])
+                        * _async_reward_func(pair_1[0], pair_0[1])
+                    )
+                    body_vel = torch.norm(base_lin_vel[:, :2], dim=1)
+                    enforce_mask = (cmd_norm > command_threshold) | (body_vel > velocity_threshold)
+                    feet_gait = torch.where(enforce_mask, sync_reward * async_reward, torch.zeros_like(sync_reward))
         if thigh_contact is not None:
             undesired_contacts = torch.sum(thigh_contact.float(), dim=1)
+
+        joint_mirror = torch.zeros(self.num_imagination_envs, device=self.device)
+        if "joint_mirror" in self.reward_term_names:
+            if self._joint_mirror_pairs_cache is None:
+                self._joint_mirror_pairs_cache = self._build_joint_mirror_pairs()
+            mirror_pairs = self._joint_mirror_pairs_cache
+            if mirror_pairs is not None and len(mirror_pairs) > 0:
+                joint_mirror_acc = torch.zeros(self.num_imagination_envs, device=self.device)
+                for left_ids, right_ids in mirror_pairs:
+                    left_joint_pos = joint_pos[:, left_ids]
+                    right_joint_pos = joint_pos[:, right_ids]
+                    joint_mirror_acc += torch.sum(torch.square(left_joint_pos - right_joint_pos), dim=1)
+                joint_mirror = joint_mirror_acc / len(mirror_pairs)
+                joint_mirror *= torch.clamp(-projected_gravity[:, 2], 0.0, 0.7) / 0.7
+
+        joint_pos_limits = torch.zeros(self.num_imagination_envs, device=self.device)
+        if "joint_pos_limits" in self.reward_term_names:
+            robot = self.scene["robot"]
+            soft_joint_pos_limits = getattr(robot.data, "soft_joint_pos_limits", None)
+            if soft_joint_pos_limits is not None:
+                if soft_joint_pos_limits.ndim == 3:
+                    soft_joint_pos_limits = soft_joint_pos_limits[0]
+                joint_pos_abs = joint_pos + self.default_joint_pos.unsqueeze(0)
+                lower_limits = soft_joint_pos_limits[:, 0]
+                upper_limits = soft_joint_pos_limits[:, 1]
+                lower_violation = (lower_limits.unsqueeze(0) - joint_pos_abs).clamp(min=0.0)
+                upper_violation = (joint_pos_abs - upper_limits.unsqueeze(0)).clamp(min=0.0)
+                joint_pos_limits = torch.sum(lower_violation + upper_violation, dim=1)
 
         # Unavailable from current model outputs -> keep zero placeholders
         base_height_l2 = torch.zeros(self.num_imagination_envs, device=self.device)
@@ -264,9 +399,6 @@ class Lite3ManagerBasedMBRLEnv(ManagerBasedMBRLEnv): # Lite3 的 manager-based M
         feet_height = torch.zeros(self.num_imagination_envs, device=self.device)
         feet_height_body = torch.zeros(self.num_imagination_envs, device=self.device)
         contact_forces = torch.zeros(self.num_imagination_envs, device=self.device)
-        feet_gait = torch.zeros(self.num_imagination_envs, device=self.device)
-        joint_mirror = torch.zeros(self.num_imagination_envs, device=self.device)
-        joint_pos_limits = torch.zeros(self.num_imagination_envs, device=self.device)
 
         self.imagination_reward_per_step = {
             "action_rate_l2": action_rate_l2,
