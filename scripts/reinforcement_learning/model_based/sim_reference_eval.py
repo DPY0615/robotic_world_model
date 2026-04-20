@@ -92,6 +92,45 @@ def sanitize_obs_groups(obs, obs_groups):
 	return {"policy": policy_groups, "critic": critic_groups}
 
 
+def extract_policy_state_dict(checkpoint):
+	if "model_state_dict" in checkpoint:
+		return checkpoint["model_state_dict"]
+	if "policy_state_dict" in checkpoint:
+		return checkpoint["policy_state_dict"]
+	return checkpoint
+
+
+def infer_mlp_hidden_dims(state_dict, module_name: str) -> list[int] | None:
+	linear_weights = []
+	prefix = f"{module_name}."
+	for key, value in state_dict.items():
+		if not key.startswith(prefix) or not key.endswith(".weight"):
+			continue
+		parts = key.split(".")
+		if len(parts) != 3:
+			continue
+		try:
+			layer_idx = int(parts[1])
+		except ValueError:
+			continue
+		if value.ndim != 2:
+			continue
+		linear_weights.append((layer_idx, int(value.shape[0])))
+
+	if len(linear_weights) < 2:
+		return None
+	linear_weights.sort(key=lambda item: item[0])
+	return [out_dim for _, out_dim in linear_weights[:-1]]
+
+
+def infer_noise_std_type(state_dict, fallback: str) -> str:
+	if "log_std" in state_dict:
+		return "log"
+	if "std" in state_dict:
+		return "scalar"
+	return fallback
+
+
 @hydra_task_config(args_cli.task, "rsl_rl_cfg_entry_point")
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg):
 	cfg = resolve_offline_config(args_cli.offline_task)
@@ -108,19 +147,29 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
 	obs = normalize_reset_output(env.reset())
 	obs_groups = sanitize_obs_groups(obs, policy_cfg.obs_groups)
+	checkpoint = torch.load(args_cli.checkpoint, map_location=env.unwrapped.device)
+	policy_state_dict = extract_policy_state_dict(checkpoint)
+	actor_hidden_dims = infer_mlp_hidden_dims(policy_state_dict, "actor") or policy_cfg.actor_hidden_dims
+	critic_hidden_dims = infer_mlp_hidden_dims(policy_state_dict, "critic") or policy_cfg.critic_hidden_dims
+	noise_std_type = infer_noise_std_type(policy_state_dict, policy_cfg.noise_std_type)
+	print(
+		"[SimRef] ActorCritic architecture: "
+		f"actor_hidden_dims={actor_hidden_dims}, "
+		f"critic_hidden_dims={critic_hidden_dims}, "
+		f"noise_std_type={noise_std_type}"
+	)
 	actor_critic = ActorCritic(
 		obs=obs,
 		obs_groups=obs_groups,
 		num_actions=policy_cfg.action_dim,
-		actor_hidden_dims=policy_cfg.actor_hidden_dims,
-		critic_hidden_dims=policy_cfg.critic_hidden_dims,
+		actor_hidden_dims=actor_hidden_dims,
+		critic_hidden_dims=critic_hidden_dims,
 		activation=policy_cfg.activation,
 		init_noise_std=policy_cfg.init_noise_std,
-		noise_std_type=policy_cfg.noise_std_type,
+		noise_std_type=noise_std_type,
 	).to(env.unwrapped.device)
 
-	checkpoint = torch.load(args_cli.checkpoint, map_location=env.unwrapped.device)
-	actor_critic.load_state_dict(checkpoint["model_state_dict"], strict=True)
+	actor_critic.load_state_dict(policy_state_dict, strict=True)
 	actor_critic.eval()
 
 	episode_reward = torch.zeros(env.unwrapped.num_envs, dtype=torch.float32, device=env.unwrapped.device)
